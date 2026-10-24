@@ -8,12 +8,23 @@ const smtp = process.env.SMTP_HOST ? nodemailer.createTransport({
   connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }) : null;
 
+function brevoSender() {
+  const configured = String(process.env.MAIL_FROM || '').trim();
+  const formatted = configured.match(/^(.*?)<\s*([^<>]+)\s*>$/);
+  const email = (formatted ? formatted[2] : configured).trim();
+  const name = formatted?.[1].trim().replace(/^["']|["']$/g, '') || 'Travel Bangladesh';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('MAIL_FROM must be a verified email address, optionally formatted as "Travel Bangladesh <email@example.com>"');
+  }
+  return { name, email };
+}
+
 exports.send = async (to, subject, text) => {
   if (process.env.BREVO_API_KEY) {
     const r = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: { 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ sender: { name: 'Travel Bangladesh', email: process.env.MAIL_FROM }, to: [{ email: to }], subject, textContent: text }),
+      body: JSON.stringify({ sender: brevoSender(), to: [{ email: to }], subject, textContent: text }),
       signal: AbortSignal.timeout(15000),
     });
     if (!r.ok) throw new Error(`Brevo ${r.status}: ${(await r.text()).slice(0, 200)}`);

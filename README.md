@@ -20,7 +20,7 @@ A full-stack travel planning and booking application for exploring tour packages
 - **Backend:** Node.js and Express 5 REST API
 - **Database:** SQLite using Node.js's built-in `node:sqlite`
 - **Authentication:** JWT in cookies; passwords hashed with bcryptjs
-- **Email:** Nodemailer with SMTP or the Brevo API
+- **Email:** Nodemailer with SMTP or the Brevo API. `MAIL_FROM` must be a verified sender; Brevo accepts either `sender@example.com` or `Travel Bangladesh <sender@example.com>`.
 
 ## Run locally
 
@@ -42,4 +42,3 @@ All API routes are prefixed with `/api`:
 | `/payments` | Email OTP and demo payment confirmation |
 | `/feedback` | Submit and view feedback |
 | `/admin` | Admin booking, user, and catalog tools |
-
