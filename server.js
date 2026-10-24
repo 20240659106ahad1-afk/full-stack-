@@ -1,0 +1,17 @@
+require('dotenv').config();
+const express = require('express'), cookies = require('cookie-parser'), path = require('path');
+const app = express();
+app.set('trust proxy', 1);
+app.use('/vendor/bootstrap', express.static(path.join(__dirname, 'node_modules/bootstrap/dist')));
+app.use(express.json(), cookies(), express.static(path.join(__dirname, 'public')));
+const limit = require('./src/ratelimit');
+app.use('/api/auth', limit(20, 60000), require('./src/modules/auth'));
+app.use('/api/catalog', require('./src/modules/catalog'));
+app.use('/api/bookings', require('./src/modules/booking'));
+app.use('/api/payments', limit(20, 60000), require('./src/modules/payment'));
+app.use('/api/feedback', limit(30, 60000), require('./src/modules/feedback'));
+app.use('/api/admin', require('./src/modules/admin'));
+app.use('/api', (q, res) => res.status(404).json({ error: 'Not found' }));
+app.use((e, q, res, n) => res.status(e.status || 500).json({ error: e.status ? e.message : 'Server error' }));
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log('Running on http://localhost:' + port));
