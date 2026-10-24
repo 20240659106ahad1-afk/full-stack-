@@ -20,10 +20,11 @@ db.exec(`create table if not exists route_distances(
   package_id integer not null references packages(id) on delete cascade,
   distance_km real not null check(distance_km > 0),
   unique(start_district_id, package_id))`);
-const routeDistancesMigration = 'catalog-route-distances-2026-10-24';
+const routeDistancesMigration = 'catalog-route-distances-2026-10-24-v2';
 if (!db.prepare('select 1 from schema_migrations where name = ?').get(routeDistancesMigration)) {
   const districtNames = ['Dhaka', 'Chattogram', 'Khulna', 'Rajshahi', 'Rangpur', 'Sylhet', 'Mymensingh'];
   const packageDistances = {
+    'Bagerhat Heritage Tour': [335, 439, 60, 468, 317, 478, 367],
     'Dinajpur Temple Trail': [335, 507, 468, 114, 10, 469, 367],
     'Durga Sagar and Bhola Trip': [277, 151, 195, 457, 312, 323, 367],
     'Floating Market Tour': [270, 210, 195, 468, 317, 323, 367],
@@ -64,7 +65,7 @@ if (!db.prepare('select 1 from schema_migrations where name = ?').get(routeDista
     db.prepare('insert into schema_migrations(name) values(?)').run(routeDistancesMigration);
   })();
 }
-const allDistrictRouteDistancesMigration = 'catalog-all-district-route-estimates-2026-10-24';
+const allDistrictRouteDistancesMigration = 'catalog-all-district-route-estimates-2026-10-24-v2';
 if (!db.prepare('select 1 from schema_migrations where name = ?').get(allDistrictRouteDistancesMigration)) {
   db.transaction(() => {
     const capitalByDivision = {
