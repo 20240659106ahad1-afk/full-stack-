@@ -12,7 +12,7 @@ exports.withMeals = rows => {
   const packages = db.prepare('select md.booking_id, md.day, mp.name from booking_meal_days md join meal_packages mp on mp.id = md.package_id order by md.day').all();
   const selections = db.prepare(`select s.booking_id, s.day, s.meal_type, s.persons, m.name from booking_meal_selections s
     join meal_items m on m.id = s.meal_item_id order by s.day, s.meal_type`).all();
-  const snacks = db.prepare(`select s.booking_id, s.day, i.name from booking_snack_selections s
+  const snacks = db.prepare(`select s.booking_id, s.day, s.persons, i.name from booking_snack_selections s
     join snack_items i on i.id = s.snack_item_id order by s.day`).all();
   return rows.map(b => ({
     ...b,
@@ -20,7 +20,7 @@ exports.withMeals = rows => {
       ...packages.filter(x => x.booking_id === b.id).map(x => `Day ${x.day}: ${x.name}`),
       ...selections.filter(x => x.booking_id === b.id).map(x =>
         `Day ${x.day} ${x.meal_type[0].toUpperCase()}${x.meal_type.slice(1)} (${x.persons} people): ${x.name}`),
-      ...snacks.filter(x => x.booking_id === b.id).map(x => `Day ${x.day} Snack: ${x.name}`),
+      ...snacks.filter(x => x.booking_id === b.id).map(x => `Day ${x.day} Snacks (${x.persons} people): ${x.name}`),
     ],
   }));
 };

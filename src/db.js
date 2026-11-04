@@ -119,7 +119,13 @@ db.exec(`create table if not exists booking_snack_selections(
   booking_id integer not null references bookings(id) on delete cascade,
   day integer not null check(day between 1 and 7),
   snack_item_id integer not null references snack_items(id),
+  persons integer not null default 1 check(persons > 0),
   primary key(booking_id, day))`);
+if (!has('booking_snack_selections', 'persons')) {
+  db.exec('alter table booking_snack_selections add column persons integer not null default 1 check(persons > 0)');
+  db.exec(`update booking_snack_selections set persons = coalesce(
+    (select nullif(b.meal_persons, 0) from bookings b where b.id = booking_snack_selections.booking_id), 1)`);
+}
 if (!has('bookings', 'distance_km')) db.exec('alter table bookings add column distance_km real not null default 0');
 if (!has('bookings', 'departure_time')) db.exec('alter table bookings add column departure_time text');
 const defaultMealPhotos = {

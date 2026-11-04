@@ -38,7 +38,7 @@ function price(b) {
       if (!Number.isInteger(id) || id < 1) throw bad(`Choose a valid ${type} item`);
       return [type, id];
     })));
-  const portions = plan.map((day, index) => Object.fromEntries(mealTypes.slice(0, 3).map(type => {
+  const portions = plan.map((day, index) => Object.fromEntries(mealTypes.map(type => {
     if (!day[type]) return [type, 0];
     const raw = b.meal_plan?.[index]?.[`${type}_persons`];
     const count = raw === undefined ? persons : Number(raw);
@@ -62,7 +62,7 @@ function price(b) {
   const selectedMeals = plan.flatMap((day, index) => mealTypes.flatMap(type => {
     const item = (type === 'snacks' ? snackItems : mealItems).find(x => x.id === day[type]);
     return item ? [{ day: index + 1, type, id: item.id, name: item.name, price: item.price,
-      persons: type === 'snacks' ? persons : portions[index][type] }] : [];
+      persons: portions[index][type] }] : [];
   }));
   const mealBreakdown = Object.fromEntries(mealTypes.map(type => [
     type,
@@ -108,9 +108,9 @@ r.post('/', auth, (q, res) => {
           b.transport_id, p.persons, b.room_id, p.persons, p.nights, p.persons, p.mealDays,
           p.distanceKm, p.transport, p.hotel, p.meal, p.total, p.discount, p.final_total, b.travel_date, b.departure_time);
       const saveMeal = db.prepare('insert into booking_meal_selections(booking_id,day,meal_type,meal_item_id,persons) values(?,?,?,?,?)');
-      const saveSnack = db.prepare('insert into booking_snack_selections(booking_id,day,snack_item_id) values(?,?,?)');
+      const saveSnack = db.prepare('insert into booking_snack_selections(booking_id,day,snack_item_id,persons) values(?,?,?,?)');
       p.selectedMeals.forEach(item => {
-        if (item.type === 'snacks') saveSnack.run(i.lastInsertRowid, item.day, item.id);
+        if (item.type === 'snacks') saveSnack.run(i.lastInsertRowid, item.day, item.id, item.persons);
         else saveMeal.run(i.lastInsertRowid, item.day, item.type, item.id, item.persons);
       });
       return { id: i.lastInsertRowid, customer_code: code };

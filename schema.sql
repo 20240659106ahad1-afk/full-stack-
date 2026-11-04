@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS booking_snack_selections (
     booking_id   INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
     day          INTEGER NOT NULL CHECK (day BETWEEN 1 AND 7),
     snack_item_id INTEGER NOT NULL REFERENCES snack_items(id),
+    persons      INTEGER NOT NULL DEFAULT 1 CHECK (persons > 0),
     PRIMARY KEY (booking_id, day)
 );
 

@@ -21,7 +21,7 @@ const payload = f => {
       const selection = f.querySelector(`[data-meal-day="${day}"][data-meal-type="${type}"]`);
       return [
         [type, selection.value || null],
-        ...(type === 'snacks' ? [] : [[`${type}_persons`, selection.closest('.meal-choice-field').querySelector('[data-meal-persons]').value || null]]),
+        [`${type}_persons`, selection.closest('.meal-choice-field').querySelector('[data-meal-persons]').value || null],
       ];
     })));
   return d;
@@ -120,7 +120,7 @@ async function plan() {
       return `<div class="meal-choice-field"><label>${label}
 <select class="meal-choice" data-meal-day="${day}" data-meal-type="${type}"><option value="">Skip ${label.toLowerCase()}</option>
 ${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.id === item.id)).join('')}</select></label>
-<label${type === 'snacks' ? ' hidden' : ''}>People eating
+<label>People eating
 <input type="number" min="1" max="${+f.persons.value || 1}" value="${count}" data-meal-persons data-meal-day="${day}" data-meal-type="${type}" aria-label="People eating ${label.toLowerCase()} on day ${day + 1}"${selected ? ' required' : ' disabled'}></label>
 <img class="meal-choice-photo" src="${esc(selected?.image_url || `/images/meal-${type}.jpg`)}" alt="${esc(selected?.name || `${label} options`)}" loading="lazy"></div>`;
     }).join('')}</div></section>`).join('')
