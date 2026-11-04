@@ -2,6 +2,20 @@
 let openEnt, userTimer;
 const METHODS = ['Bkash', 'Nagad', 'Rocket', 'Bank'];
 const today = () => new Date().toLocaleDateString('en-CA');
+const paymentFields = () => `<label>Payment method<select name="method">${METHODS.map(method => `<option>${method}</option>`).join('')}</select></label>
+<label data-account-label><span>bKash phone number</span><input name="account" type="text" inputmode="numeric" pattern="01[3-9][0-9]{8}" maxlength="24" placeholder="01XXXXXXXXX" autocomplete="off" required></label>
+<p class="mut">Demo only: no money will be taken. Your account number is not stored; the verification code goes to your registered email.</p>`;
+const setupPaymentForms = () => document.querySelectorAll('.booking-payment').forEach(form => {
+  const method = form.elements.method, label = form.querySelector('[data-account-label] span'), account = form.elements.account;
+  const updateAccountField = () => {
+    const bank = method.value === 'Bank';
+    label.textContent = bank ? 'Bank account number' : `${method.value} phone number`;
+    account.pattern = bank ? '[0-9]{6,24}' : '01[3-9][0-9]{8}';
+    account.placeholder = bank ? 'Enter bank account number' : '01XXXXXXXXX';
+  };
+  method.addEventListener('change', updateAccountField);
+  updateAccountField();
+});
 
 function strength(pw, user = '') {
   const cls = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter(r => r.test(pw)).length;
@@ -91,7 +105,8 @@ async function plan() {
       : '<small class="text-secondary">Choose your travel date to check seat availability.</small>';
   };
   const fillTransports = () => {
-    const cur = f.transport_id.value;
+    const requested = new URLSearchParams(location.hash.split('?')[1] || '').get('transport');
+    const cur = f.transport_id.value || requested;
     f.transport_id.innerHTML = cat.transports.map(t => { const left = avail[t.id] ?? t.capacity;
       return `<option value="${t.id}"${left ? '' : ' disabled'}${t.id == cur ? ' selected' : ''}>${esc(`${t.name} ${t.type}, ${left}/${t.capacity} seats left`)}</option>`; }).join('');
     seatUI();
@@ -212,14 +227,14 @@ ${booking.discount ? `<div><span>Discount</span><strong>-${tk(booking.discount)}
 <div><span>Advance to pay (50%)</span><strong>${tk(booking.final_total / 2)}</strong></div>
 </div>
 ${booking.status === 'pending' ? `<form class="booking-payment payment-step" data-act="pay" data-id="${booking.id}">
-<p class="mut">Demo mode: no real payment is processed. A test transaction ID will be generated after email verification.</p>
-<label>Payment method<select name="method">${METHODS.map(method => `<option>${method}</option>`).join('')}</select></label>
+${paymentFields()}
 <button type="button" class="ghost" data-act="otp" data-id="${booking.id}">Email me a code</button>
 <div class="payment-code-panel" hidden><p class="mut">Enter the 6-digit code sent to your email.</p>
 <label>6-digit email code${otpInput('otp')}</label><button type="submit">Confirm booking</button></div></form>`
     : `<p class="booking-cancelled">${booking.status === 'confirmed' ? 'This booking is already confirmed.' : 'This booking has been cancelled.'}</p>`}
 <a class="success-back" href="#/bookings">Back to my bookings</a></section>`;
   document.querySelectorAll('.booking-payment .payment-code-panel .otp-digit').forEach(input => { input.required = false; });
+  setupPaymentForms();
 }
 
 async function bookings() {
@@ -250,8 +265,7 @@ ${b.method ? `<div class="booking-row"><span>Payment method</span><strong>${esc(
 </section></div>
 ${b.meals.length ? `<p class="booking-meals"><strong>Meal selections</strong><span>${b.meals.map(esc).join(' · ')}</span></p>` : ''}
 ${b.status === 'pending' ? `<form class="booking-payment" data-act="pay" data-id="${b.id}"><h2>Confirm your booking</h2><p class="mut mb-0">Your seats are held for 30 minutes after booking.</p>
-<label>Payment method<select name="method">${METHODS.map(m => `<option>${m}</option>`).join('')}</select></label>
-<p class="mut">Demo mode: no real payment is processed. A test transaction ID will be generated automatically.</p>
+${paymentFields()}
 <button type="button" class="ghost" data-act="otp" data-id="${b.id}">Email me a code</button>
 <div class="payment-code-panel" hidden><p class="mut">Enter the code sent to your email.</p>
 <label>6-digit code from your email${otpInput('otp')}</label><button>Confirm booking</button></div>
@@ -265,6 +279,7 @@ ${b.status === 'pending' ? `<form class="booking-payment" data-act="pay" data-id
   document.querySelectorAll('.booking-payment .payment-code-panel').forEach(panel => {
     panel.querySelectorAll('.otp-digit').forEach(input => { input.required = false; });
   });
+  setupPaymentForms();
 }
 
 const kv = (k, v) => `<div class="ln"><span class="mut">${k}</span><span class="text-end">${v || '-'}</span></div>`;
@@ -394,10 +409,14 @@ document.addEventListener('click', async e => {
       firstDay[0]?.dispatchEvent(new Event('input', { bubbles: true }));
     }
     if (b?.dataset.act === 'otp') {
+      const form = b.closest('form');
+      if (!form.reportValidity()) return;
       const old = b.textContent; b.disabled = true; b.textContent = 'Sending...';
       try {
-        const result = await api(`/payments/${b.dataset.id}/otp`, 'POST');
-        const panel = b.closest('form').querySelector('.payment-code-panel');
+        const result = await api(`/payments/${b.dataset.id}/otp`, 'POST', {
+          method: form.elements.method.value, account: form.elements.account.value,
+        });
+        const panel = form.querySelector('.payment-code-panel');
         panel.hidden = false;
         panel.querySelectorAll('.otp-digit').forEach(input => { input.required = true; });
         panel.querySelector('.otp-digit')?.focus();

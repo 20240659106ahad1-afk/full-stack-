@@ -1,8 +1,20 @@
 const r = require('express').Router(), db = require('../db'), otp = require('../otp'), { send } = require('../mailer'), { auth } = require('../middleware/auth');
 const { BOOKINGS, withMeals } = require('../queries');
 const { okDate, left } = require('../seats');
-const { randomBytes } = require('node:crypto');
+const { randomBytes, createHmac } = require('node:crypto');
 const bad = m => Object.assign(new Error(m), { status: 400 });
+const paymentDetails = body => {
+  const { method } = body || {};
+  if (!['Bkash', 'Nagad', 'Rocket', 'Bank'].includes(method)) throw bad('Choose a payment method');
+  const account = String(body?.account || '').replace(/[\s-]/g, '');
+  const valid = method === 'Bank' ? /^\d{6,24}$/.test(account) : /^01[3-9]\d{8}$/.test(account);
+  if (!valid) throw bad(method === 'Bank'
+    ? 'Enter a valid bank account number using 6 to 24 digits'
+    : 'Enter a valid Bangladesh mobile wallet number, such as 01XXXXXXXXX');
+  return { method, account };
+};
+const paymentOtpKey = (id, method, account) =>
+  `pay:${id}:${createHmac('sha256', process.env.JWT_SECRET || 'dev').update(`${method}:${account}`).digest('hex')}`;
 const pending = q => {
   const b = db.prepare("select * from bookings where id=? and user_id=? and status='pending'").get(q.params.id, q.user.id);
   if (!b) throw bad('Booking not found or already paid');
@@ -13,20 +25,23 @@ const pending = q => {
 r.post('/:id/otp', auth, async (q, res, next) => {
   try {
     const b = pending(q), u = db.prepare('select email from users where id = ?').get(q.user.id);
+    const { method, account } = paymentDetails(q.body);
     if (!u.email) throw bad('Add your email in Profile first');
-    await otp.issue('pay:' + b.id, u.email, 'Your payment code');
+    const recent = db.prepare('select created_at from otps where key like ? order by created_at desc limit 1')
+      .get(`pay:${b.id}:%`);
+    if (recent && Date.now() - recent.created_at < 60000) throw bad('Wait a minute before asking for a new code');
+    await otp.issue(paymentOtpKey(b.id, method, account), u.email, 'Your payment code');
     res.json({ sent_to: u.email.replace(/(.).+(@.+)/, '$1***$2'), expires_in: 300 });
   } catch (e) { next(e); }
 });
 
 // Demo only: no real payment is processed or verified.
 r.post('/:id', auth, async (q, res) => {
-  const { method, otp: code } = q.body, b = pending(q);
-  if (!['Bkash', 'Nagad', 'Rocket', 'Bank'].includes(method)) throw bad('Choose a payment method');
+  const { method, account } = paymentDetails(q.body), { otp: code } = q.body, b = pending(q);
   if (!okDate(b.travel_date)) throw bad('This booking has no valid travel date. Please cancel it and book again');
   const t = db.prepare('select * from transports where id = ?').get(b.transport_id);
   if (b.transport_persons > left(t, b.travel_date, b.id)) throw bad('Those seats were taken by someone else. Please cancel and book again');
-  otp.check('pay:' + b.id, code);
+  otp.check(paymentOtpKey(b.id, method, account), code);
   const transaction_id = 'TEST-' + randomBytes(10).toString('hex').toUpperCase();
   const advance = Math.round(b.final_total * 50) / 100, remaining = b.final_total - advance;
   db.transaction(() => {

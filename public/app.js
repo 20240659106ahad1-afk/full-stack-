@@ -60,7 +60,7 @@ function toast(m, bad) {
 }
 
 function nav() {
-  const links = '<a href="#/">Home</a><a href="#/tours"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v12a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9M8 5l9 4.5"/></svg>Tour packages</a><a href="#customize-meals"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16a8 8 0 0 1-16 0Z"/><path d="M3 12h18M8 7c0-1 .8-1.5.8-2.5M12 7c0-1 .8-1.5.8-2.5M16 7c0-1 .8-1.5.8-2.5"/></svg>Customize meals</a>';
+  const links = '<a href="#/">Home</a><a href="#/tours"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v12a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9M8 5l9 4.5"/></svg>Tour packages</a><a href="#/transport"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11 6.5 5.8A2 2 0 0 1 8.4 4.5h7.2a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16v7a1 1 0 0 1-1 1h-1v1h-2v-1H8v1H6v-1H5a1 1 0 0 1-1-1zM4 15h4m8 0h4M8 11V8h8v3"/><circle cx="7" cy="16.5" r=".7"/><circle cx="17" cy="16.5" r=".7"/></svg>Browse transport</a><a href="#customize-meals"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16a8 8 0 0 1-16 0Z"/><path d="M3 12h18M8 7c0-1 .8-1.5.8-2.5M12 7c0-1 .8-1.5.8-2.5M16 7c0-1 .8-1.5.8-2.5"/></svg>Customize meals</a>';
   $('#nav').innerHTML = me
     ? `${links}<a href="#/bookings">My bookings</a><a href="#/feedback">Feedback</a>${me.role !== 'customer' ? '<a href="#/admin">Admin</a>' : ''}${me.role === 'admin' ? '<a href="#/catalog">Catalog</a>' : ''}<a href="#/profile">Profile</a><button class="ghost" data-act="logout">Log out (${esc(me.username)})</button>`
     : `${links}<a href="#/profile">Profile / Log in</a>`;
@@ -98,6 +98,32 @@ async function tours() {
       .map(p => tourCard(p, cat.divisions.find(d => d.id === p.division_id))).join('')
       || '<p class="mut">No tours found in this region yet.</p>';
   }));
+}
+
+const vehicleEmoji = name => {
+  const type = String(name).toLowerCase();
+  if (type.includes('microbus')) return '🚐';
+  if (type.includes('bus')) return '🚌';
+  if (type.includes('car')) return '🚗';
+  if (type.includes('train')) return '🚆';
+  if (type.includes('launch')) return '🚢';
+  if (type.includes('flight')) return '✈️';
+  return '🚘';
+};
+
+async function transportBrowse() {
+  cat = cat || await api('/catalog');
+  const cards = cat.transports.map(t => `<article class="transport-card">
+<div class="transport-card-icon" aria-hidden="true">${vehicleEmoji(t.name)}</div>
+<span class="tour-location">${esc(t.route)}</span><h2>${esc(`${t.name} ${t.type}`)}</h2>
+<p>Comfortable ${esc(t.type.toLowerCase())} transport for your Bangladesh trip.</p>
+<div class="transport-card-meta"><span>Seats</span><strong>${t.capacity}</strong></div>
+<a class="tour-link" href="#/plan?transport=${encodeURIComponent(t.id)}">Plan with this transport <span aria-hidden="true">→</span></a>
+</article>`).join('');
+  $('#app').classList.remove('wide');
+  $('#app').innerHTML = `<section class="listing-heading"><span class="section-kicker">TRAVEL YOUR WAY</span><h1>Browse transport</h1>
+<p>Compare available vehicles and choose the ride that suits your trip.</p></section>
+<div class="transport-grid">${cards || '<p class="mut">No transport options are available yet.</p>'}</div>`;
 }
 
 async function bookingSuccess(id) {
@@ -149,7 +175,7 @@ async function home() {
     ['snacks', 'Snacks', cat.snacks],
   ];
   const mealCards = mealTypes.map(([type, title, items]) => `<article class="meal-card">
-<div class="meal-card-heading"><span class="meal-icon" aria-hidden="true">${type === 'snacks' ? '◉' : '✳'}</span><h3>${title}</h3></div>
+<div class="meal-card-heading"><img class="meal-icon meal-icon-photo" src="/images/meal-${type}.jpg" alt=""><h3>${title}</h3></div>
 <div class="meal-item-list">${items.map(item => `<div class="meal-item">
 <img src="${esc(item.image_url || `/images/meal-${type}.jpg`)}" alt="${esc(item.name)}" loading="lazy">
 <div><strong>${esc(item.name)}</strong></div></div>`).join('')}</div>
@@ -157,11 +183,11 @@ async function home() {
   $('#app').innerHTML = `<section class="hero"><div class="hero-copy">
 <span class="hero-eyebrow">YOUR JOURNEY STARTS HERE</span><h1>Discover Bangladesh</h1>
 <p>From the mangrove forests of the Sundarbans to the floating markets of Barishal, find your next unforgettable adventure.</p>
-<div class="hero-actions"><a class="hero-button hero-button-light" href="#/tours">Browse tours <span aria-hidden="true">↘</span></a><a class="hero-button hero-button-outline" href="#customize-meals"><span aria-hidden="true">✳</span> Customize meals</a></div>
+<div class="hero-actions"><a class="hero-button hero-button-light" href="#/tours">Browse tours <span aria-hidden="true">↘</span></a><a class="hero-button hero-button-outline" href="#/transport">Browse transport <span aria-hidden="true">🚐</span></a><a class="hero-button hero-button-outline" href="#customize-meals"><img class="hero-food-icon" src="/images/meal-lunch.jpg" alt=""> Customize meals</a></div>
 </div><div class="hero-stats"><span><strong>${cat.divisions.length}</strong> divisions</span><i></i><span><strong>${cat.packages.length}</strong> curated tours</span><i></i><span><strong>30%</strong> savings available</span></div></section>
 <div class="wrap home-content"><section id="featured-tours" class="home-section"><div class="section-heading"><div><span class="section-kicker">FIND YOUR NEXT ESCAPE</span><h2>Featured tour packages</h2><p>Explore curated trips across Bangladesh's beautiful regions.</p></div><a href="#/tours" class="section-link">View all tours <span aria-hidden="true">→</span></a></div><div class="tour-grid">${featured}</div></section>
 <section id="destinations" class="home-section"><div class="section-heading"><div><span class="section-kicker">A COUNTRY FULL OF STORIES</span><h2>Explore by destination</h2><p>Choose a region and start planning your journey.</p></div></div><div class="tiles">${tiles}</div></section>
-<section id="customize-meals" class="home-section"><div class="section-heading"><div><span class="section-kicker">A TASTE OF BANGLADESH</span><h2>Customize every meal</h2><p>Choose breakfast, lunch, dinner and snacks separately for each day of your trip.</p></div><a href="#/plan" class="section-link">Customize meals <span aria-hidden="true">→</span></a></div><div class="meal-grid">${mealCards}</div></section>
+<section id="customize-meals" class="home-section"><div class="section-heading"><div><span class="section-kicker">A TASTE OF BANGLADESH</span><h2 class="food-section-title"><img src="/images/meal-lunch.jpg" alt="">Customize every meal</h2><p>Choose breakfast, lunch, dinner and snacks separately for each day of your trip.</p></div><a href="#/plan" class="section-link">Customize meals <span aria-hidden="true">→</span></a></div><div class="meal-grid">${mealCards}</div></section>
 ${reviews}<section class="home-section"><div class="section-heading"><div><span class="section-kicker">SIMPLE FROM START TO FINISH</span><h2>How it works</h2></div></div><div class="how">
 <div><b>1</b><h3>Plan your trip</h3><p>Choose where you start, where you go, how you travel, where you stay and what you eat.</p></div>
 <div><b>2</b><h3>Watch the price</h3><p>A live ticket adds everything up for you and applies the discount.</p></div>
@@ -171,7 +197,7 @@ ${reviews}<section class="home-section"><div class="section-heading"><div><span 
 async function route() {
   const anchor = location.hash && !location.hash.startsWith('#/') ? decodeURIComponent(location.hash.slice(1)) : '';
   nav();
-  const routeParts = location.hash.slice(2).split('/');
+  const routeParts = location.hash.slice(2).split('?')[0].split('/');
   const p = anchor ? '' : routeParts[0];
   $('#app').classList.toggle('wide', p === '');
   document.querySelectorAll('#nav a').forEach(a => a.toggleAttribute('aria-current', a.getAttribute('href') === location.hash));
@@ -181,7 +207,7 @@ async function route() {
   try {
     if (p === 'booking-success') await bookingSuccess(routeParts[1]);
     else if (p === 'payment') await paymentPage(routeParts[1]);
-    else await ({ plan, tours, bookings, admin, catalog, forgot, profile, feedback }[p] || home)();
+    else await ({ plan, tours, transport: transportBrowse, bookings, admin, catalog, forgot, profile, feedback }[p] || home)();
     if (anchor) document.getElementById(anchor)?.scrollIntoView();
   } catch (e) { toast(e.message, 1); }
   setTimeout(hideLoader, Math.max(0, 650 - (Date.now() - t0)));

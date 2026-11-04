@@ -2,11 +2,12 @@
 
 A full-stack travel planning and booking application for exploring tour packages across Bangladesh. Users can plan a trip, choose transport and accommodation, customize meals, review a price breakdown, and manage bookings.
 
-> **Payment notice:** Payments are currently in demo mode. The app emails a verification code and records a test transaction; it does not charge real money or connect to a payment gateway.
+> **Payment notice:** Payments are currently in demo mode. The app emails a verification code after you enter a wallet or bank account number and records a test transaction; it does not charge real money or connect to a payment gateway. Account numbers are not stored.
 
 ## Features
 
 - Browse destinations and tour packages
+- Browse transport options and start a trip with a selected vehicle
 - Plan trips with transport, departure times, hotel, travel dates, and seat availability
 - Select meals and snacks for each day, set servings for each, and view server-calculated pricing
 - Create an account, sign in, and manage a profile
