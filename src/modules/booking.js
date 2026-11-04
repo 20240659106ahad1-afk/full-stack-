@@ -38,6 +38,15 @@ function price(b) {
       if (!Number.isInteger(id) || id < 1) throw bad(`Choose a valid ${type} item`);
       return [type, id];
     })));
+  const portions = plan.map((day, index) => Object.fromEntries(mealTypes.slice(0, 3).map(type => {
+    if (!day[type]) return [type, 0];
+    const raw = b.meal_plan?.[index]?.[`${type}_persons`];
+    const count = raw === undefined ? persons : Number(raw);
+    if (!Number.isInteger(count) || count < 1 || count > persons) {
+      throw bad(`The number of people eating ${type} must be a whole number from 1 to ${persons}`);
+    }
+    return [type, count];
+  })));
   const mealIds = [...new Set(plan.flatMap(day => mealTypes.slice(0, 3).map(type => day[type]).filter(Boolean)))];
   const snackIds = [...new Set(plan.map(day => day.snacks).filter(Boolean))];
   const mealItems = mealIds.length
@@ -52,18 +61,23 @@ function price(b) {
   }
   const selectedMeals = plan.flatMap((day, index) => mealTypes.flatMap(type => {
     const item = (type === 'snacks' ? snackItems : mealItems).find(x => x.id === day[type]);
-    return item ? [{ day: index + 1, type, id: item.id, name: item.name, price: item.price }] : [];
+    return item ? [{ day: index + 1, type, id: item.id, name: item.name, price: item.price,
+      persons: type === 'snacks' ? persons : portions[index][type] }] : [];
   }));
   const mealBreakdown = Object.fromEntries(mealTypes.map(type => [
     type,
-    selectedMeals.filter(item => item.type === type).reduce((sum, item) => sum + item.price, 0) * persons,
+    selectedMeals.filter(item => item.type === type).reduce((sum, item) => sum + item.price * item.persons, 0),
+  ]));
+  const mealPersonCounts = Object.fromEntries(mealTypes.map(type => [
+    type,
+    selectedMeals.filter(item => item.type === type).reduce((sum, item) => sum + item.persons, 0),
   ]));
   const hotel = Math.ceil(persons / room.capacity) * room.price_per_night * nights;
   const meal = Object.values(mealBreakdown).reduce((sum, value) => sum + value, 0);
   const total = transport + hotel + meal, discount = total >= 5000 ? total * 0.3 : 0;
   return {
     distanceKm: route.distance_km, finalStop: finalStop.stop_name, oneWayFarePerPerson, acSurchargePerSeat, transport,
-    hotel, meal, mealBreakdown, selectedMeals, mealDays: plan.filter(day => mealTypes.some(type => day[type])).length,
+    hotel, meal, mealBreakdown, mealPersonCounts, selectedMeals, mealDays: plan.filter(day => mealTypes.some(type => day[type])).length,
     total, discount, final_total: total - discount, persons, nights, seats_left: seats, plan,
   };
 }
@@ -78,6 +92,9 @@ r.get('/availability', (q, res) => {
 r.post('/', auth, (q, res) => {
   const b = q.body;
   if (!okDate(b.travel_date)) throw bad('Choose a travel date from today onward');
+  if (typeof b.departure_time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(b.departure_time)) {
+    throw bad('Choose a valid transport departure time');
+  }
   const p = price(b);
   try {
     const row = db.transaction(() => {
@@ -86,15 +103,15 @@ r.post('/', auth, (q, res) => {
       while (db.prepare('select 1 from bookings where customer_code = ?').get(code));
       const i = db.prepare(`insert into bookings(customer_code,user_id,start_district_id,destination_division_id,package_id,
         transport_id,transport_persons,room_id,hotel_persons,nights,meal_persons,meal_days,
-        distance_km,transport_cost,hotel_cost,meal_cost,total,discount,final_total,travel_date) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        distance_km,transport_cost,hotel_cost,meal_cost,total,discount,final_total,travel_date,departure_time) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(code, q.user.id, b.start_district_id, b.destination_division_id, b.package_id || null,
           b.transport_id, p.persons, b.room_id, p.persons, p.nights, p.persons, p.mealDays,
-          p.distanceKm, p.transport, p.hotel, p.meal, p.total, p.discount, p.final_total, b.travel_date);
-      const saveMeal = db.prepare('insert into booking_meal_selections(booking_id,day,meal_type,meal_item_id) values(?,?,?,?)');
+          p.distanceKm, p.transport, p.hotel, p.meal, p.total, p.discount, p.final_total, b.travel_date, b.departure_time);
+      const saveMeal = db.prepare('insert into booking_meal_selections(booking_id,day,meal_type,meal_item_id,persons) values(?,?,?,?,?)');
       const saveSnack = db.prepare('insert into booking_snack_selections(booking_id,day,snack_item_id) values(?,?,?)');
       p.selectedMeals.forEach(item => {
         if (item.type === 'snacks') saveSnack.run(i.lastInsertRowid, item.day, item.id);
-        else saveMeal.run(i.lastInsertRowid, item.day, item.type, item.id);
+        else saveMeal.run(i.lastInsertRowid, item.day, item.type, item.id, item.persons);
       });
       return { id: i.lastInsertRowid, customer_code: code };
     })();

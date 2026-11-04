@@ -41,6 +41,7 @@ r.post('/:id', auth, async (q, res) => {
       `Hello ${confirmed.username},\n\nYour booking is confirmed.\n\n` +
       `Booking reference: ${confirmed.customer_code}\nTrip: ${confirmed.package || confirmed.division}\n` +
       `Route: ${confirmed.start_district} to ${confirmed.division}\nTravel date: ${confirmed.travel_date}\n` +
+      `Transport departure time: ${confirmed.departure_time || 'Not set'}\n` +
       `Travellers: ${confirmed.transport_persons}\nMeals: ${confirmed.meals.length ? confirmed.meals.join('; ') : 'None'}\n` +
       `Total: ${confirmed.final_total} Tk\nAdvance paid: ${advance} Tk\nRemaining due: ${remaining} Tk\n` +
       `Demo transaction ID: ${transaction_id}\n\nTravel Bangladesh`);

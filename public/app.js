@@ -115,7 +115,7 @@ async function bookingSuccess(id) {
 <div class="success-summary">
 <div class="success-trip"><span class="summary-label">YOUR TRIP</span><h2>${esc(booking.package || booking.division)}</h2>
 <p>${esc(booking.start_district)} <span aria-hidden="true">→</span> ${esc(booking.division)}</p>
-<div class="summary-meta"><span>Travel date<strong>${esc(booking.travel_date)}</strong></span><span>Seats<strong>${booking.transport_persons}</strong></span><span>Stay<strong>${esc(booking.room_type)}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights</strong></span></div>
+<div class="summary-meta"><span>Travel date<strong>${esc(booking.travel_date)}</strong></span><span>Departure time<strong>${esc(booking.departure_time || 'Not set')}</strong></span><span>Seats<strong>${booking.transport_persons}</strong></span><span>Stay<strong>${esc(booking.room_type)}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights</strong></span></div>
 ${booking.meals.length ? `<p class="success-meals"><strong>Meals selected:</strong> ${booking.meals.map(esc).join(' · ')}</p>` : ''}
 </div><div class="success-price"><span class="summary-label">PRICE SUMMARY</span>
 <div class="booking-row"><span>Total amount</span><strong>${tk(booking.final_total)}</strong></div>

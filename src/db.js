@@ -121,6 +121,7 @@ db.exec(`create table if not exists booking_snack_selections(
   snack_item_id integer not null references snack_items(id),
   primary key(booking_id, day))`);
 if (!has('bookings', 'distance_km')) db.exec('alter table bookings add column distance_km real not null default 0');
+if (!has('bookings', 'departure_time')) db.exec('alter table bookings add column departure_time text');
 const defaultMealPhotos = {
   breakfast: '/images/meal-breakfast.jpg',
   lunch: '/images/meal-lunch.jpg',
@@ -245,7 +246,13 @@ create table if not exists booking_meal_selections(
   day integer not null check (day between 1 and 7),
   meal_type text not null check (meal_type in ('breakfast','lunch','dinner')),
   meal_item_id integer not null references meal_items(id),
+  persons integer not null default 1 check (persons > 0),
   primary key (booking_id, day, meal_type))`);
+if (!has('booking_meal_selections', 'persons')) {
+  db.exec('alter table booking_meal_selections add column persons integer not null default 1 check (persons > 0)');
+  db.exec(`update booking_meal_selections set persons = coalesce(
+    (select nullif(b.meal_persons, 0) from bookings b where b.id = booking_meal_selections.booking_id), 1)`);
+}
 db.exec(`create table if not exists feedback(id integer primary key autoincrement, user_id integer not null references users(id),
   booking_id integer references bookings(id) on delete set null, rating integer not null check (rating between 1 and 5),
   comment text not null, created_at text not null default current_timestamp);

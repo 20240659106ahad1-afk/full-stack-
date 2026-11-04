@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     discount                REAL NOT NULL DEFAULT 0,
     final_total             REAL NOT NULL DEFAULT 0,
     travel_date             TEXT,
+    departure_time          TEXT,
     status                  TEXT NOT NULL DEFAULT 'pending'
                             CHECK (status IN ('pending','confirmed','cancelled')),
     created_at              TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -108,6 +109,15 @@ CREATE TABLE IF NOT EXISTS booking_meals (
     booking_id   INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
     meal_item_id INTEGER NOT NULL REFERENCES meal_items(id),
     PRIMARY KEY (booking_id, meal_item_id)
+);
+
+CREATE TABLE IF NOT EXISTS booking_meal_selections (
+    booking_id   INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    day          INTEGER NOT NULL CHECK (day BETWEEN 1 AND 7),
+    meal_type    TEXT NOT NULL CHECK (meal_type IN ('breakfast','lunch','dinner')),
+    meal_item_id INTEGER NOT NULL REFERENCES meal_items(id),
+    persons      INTEGER NOT NULL DEFAULT 1 CHECK (persons > 0),
+    PRIMARY KEY (booking_id, day, meal_type)
 );
 
 CREATE TABLE IF NOT EXISTS booking_snack_selections (

@@ -17,10 +17,13 @@ const pwField = (name, label, auto) => `<label>${label}${pwInput(name, `required
 const payload = f => {
   const d = Object.fromEntries(new FormData(f));
   d.meal_plan = Array.from({ length: Math.min(Math.max(+f.nights.value || 1, 1), 7) }, (_, day) =>
-    Object.fromEntries(['breakfast', 'lunch', 'dinner', 'snacks'].map(type => [
-      type,
-      f.querySelector(`[data-meal-day="${day}"][data-meal-type="${type}"]`).value || null,
-    ])));
+    Object.fromEntries(['breakfast', 'lunch', 'dinner', 'snacks'].flatMap(type => {
+      const selection = f.querySelector(`[data-meal-day="${day}"][data-meal-type="${type}"]`);
+      return [
+        [type, selection.value || null],
+        ...(type === 'snacks' ? [] : [[`${type}_persons`, selection.closest('.meal-choice-field').querySelector('[data-meal-persons]').value || null]]),
+      ];
+    })));
   return d;
 };
 
@@ -40,6 +43,7 @@ async function plan() {
 <label>Travel date<input name="travel_date" type="date" required min="${today()}"></label>
 <h3 class="step"><b>2</b>How will you travel?</h3>
 <label>Transport<select name="transport_id"></select></label><div id="seats"></div>
+<label>Transport departure time<input name="departure_time" type="time" required></label>
 <label>Number of seats to book<input name="persons" type="number" min="1" value="2" required></label>
 <h3 class="step"><b>3</b>Where will you stay?</h3>
 <label>Hotel room<select name="room_id">${cat.rooms.map(r => opt(r.id, `${r.room_type}, ${r.bed_count} bed${r.bed_count === 1 ? '' : 's'}, sleeps ${r.capacity}, ${r.price_per_night} Tk a night`)).join('')}</select></label>
@@ -105,15 +109,20 @@ async function plan() {
     const n = Math.min(Math.max(+f.nights.value || 1, 1), 7);
     const old = [...f.querySelectorAll('.meal-choice')].map(s => [s.dataset.mealDay, s.dataset.mealType, s.value]);
     const oldSelections = new Map(old.map(([day, type, value]) => [`${day}:${type}`, value]));
+    const oldPersons = new Map([...f.querySelectorAll('[data-meal-persons]')].map(input =>
+      [`${input.dataset.mealDay}:${input.dataset.mealType}`, input.value]));
     const labels = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
     $('#day-plan').innerHTML = Array.from({ length: n }, (_, day) => `<section class="meal-day">
 <h4>Day ${day + 1}</h4><div class="meal-choice-grid">${Object.entries(labels).map(([type, label]) => {
       const items = type === 'snacks' ? cat.snacks : cat.meals.filter(item => item.meal_type === type);
       const selected = items.find(item => item.id == oldSelections.get(`${day}:${type}`));
-      return `<label class="meal-choice-field">${label}
+      const count = oldPersons.get(`${day}:${type}`) || f.persons.value || 1;
+      return `<div class="meal-choice-field"><label>${label}
 <select class="meal-choice" data-meal-day="${day}" data-meal-type="${type}"><option value="">Skip ${label.toLowerCase()}</option>
-${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.id === item.id)).join('')}</select>
-<img class="meal-choice-photo" src="${esc(selected?.image_url || `/images/meal-${type}.jpg`)}" alt="${esc(selected?.name || `${label} options`)}" loading="lazy"></label>`;
+${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.id === item.id)).join('')}</select></label>
+<label${type === 'snacks' ? ' hidden' : ''}>People eating
+<input type="number" min="1" max="${+f.persons.value || 1}" value="${count}" data-meal-persons data-meal-day="${day}" data-meal-type="${type}" aria-label="People eating ${label.toLowerCase()} on day ${day + 1}"${selected ? ' required' : ' disabled'}></label>
+<img class="meal-choice-photo" src="${esc(selected?.image_url || `/images/meal-${type}.jpg`)}" alt="${esc(selected?.name || `${label} options`)}" loading="lazy"></div>`;
     }).join('')}</div></section>`).join('')
       + (+f.nights.value > 7 ? '<p class="text-secondary small">Meals can be customized for the first 7 days.</p>' : '');
   };
@@ -130,7 +139,7 @@ ${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.
       const transport = cat.transports.find(x => x.id == f.transport_id.value);
       const mealLines = Object.entries({ breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' })
         .filter(([type]) => q.mealBreakdown[type])
-        .map(([type, label]) => `<div class="ln"><span>${label}</span><span>${tk(q.mealBreakdown[type])}</span></div>`).join('');
+        .map(([type, label]) => `<div class="ln"><span>${label} (${q.mealPersonCounts[type]} servings)</span><span>${tk(q.mealBreakdown[type])}</span></div>`).join('');
       ticket.innerHTML = `<h2>${esc(p ? p.name : 'Your trip')}</h2><p>${p ? esc(p.stops.join(' to ')) : ''}</p>
 <div class="ln"><span>Distance (one way)</span><span>${q.distanceKm} km to ${esc(q.finalStop)}</span></div>
 <div class="ln"><span>Fare per seat (${esc(transport?.type || '')})</span><span>${q.distanceKm} km × ৳1${q.acSurchargePerSeat ? ' + ৳20 AC fee' : ''} = ${tk(q.oneWayFarePerPerson)}</span></div>
@@ -144,8 +153,14 @@ ${q.discount ? `<div class="ln"><span>30% discount</span><span>-${tk(q.discount)
   };
   f.addEventListener('input', async e => {
     const n = e.target.name;
+    if (n === 'persons') {
+      f.querySelectorAll('[data-meal-persons]').forEach(input => {
+        input.max = e.target.value || 1;
+        if (+input.value > +input.max) input.value = input.max;
+      });
+    }
     if (f.dataset.id || (!['start_district_id', 'destination_division_id', 'package_id', 'nights', 'travel_date', 'transport_id', 'persons', 'room_id'].includes(n)
-      && !e.target.classList.contains('meal-choice'))) return;
+      && !e.target.classList.contains('meal-choice') && !e.target.hasAttribute('data-meal-persons'))) return;
     if (n === 'nights') dayPlan();
     if (n === 'travel_date') await loadSeats();
     if (n === 'transport_id') seatUI();
@@ -158,9 +173,16 @@ ${q.discount ? `<div class="ln"><span>30% discount</span><span>-${tk(q.discount)
       const { mealType } = e.target.dataset;
       const items = mealType === 'snacks' ? cat.snacks : cat.meals.filter(item => item.meal_type === mealType);
       const selected = items.find(item => item.id == e.target.value);
-      const image = e.target.parentElement.querySelector('.meal-choice-photo');
+      const field = e.target.closest('.meal-choice-field');
+      const image = field.querySelector('.meal-choice-photo');
       image.src = selected?.image_url || `/images/meal-${mealType}.jpg`;
       image.alt = selected?.name || `${mealType} options`;
+      const people = field.querySelector('[data-meal-persons]');
+      if (people) {
+        people.disabled = !selected;
+        people.required = !!selected;
+        if (selected && !people.value) people.value = f.persons.value || 1;
+      }
     }
   });
   fillPackages(); updateDestination(); dayPlan(); fillTransports(); quote();
@@ -177,7 +199,8 @@ async function paymentPage(bookingId) {
 <div><span>Trip</span><strong>${esc(booking.package || booking.division)}</strong></div>
 <div><span>Route</span><strong>${esc(booking.start_district)} → ${esc(booking.division)}</strong></div>
 <div><span>Route distance and fare</span><strong>${booking.distance_km} km one way · ${booking.transport_persons} seats</strong></div>
-<div><span>Date and seats booked</span><strong>${esc(booking.travel_date)} · ${booking.transport_persons}</strong></div>
+<div><span>Date and departure time</span><strong>${esc(booking.travel_date)} · ${esc(booking.departure_time || 'Not set')}</strong></div>
+<div><span>Seats booked</span><strong>${booking.transport_persons}</strong></div>
 <div><span>Transport</span><strong>${esc(`${booking.transport_name} ${booking.transport_type}`)}</strong></div>
 <div><span>Stay</span><strong>${esc(`${booking.room_type}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights`)}</strong></div>
 <div class="payment-meals"><span>Your meal choices</span><strong>${booking.meals.length ? booking.meals.map(esc).join('<br>') : 'No meals selected'}</strong></div>
@@ -213,6 +236,7 @@ ${list.length ? `<span class="booking-count">${list.length} ${list.length === 1 
 <div class="booking-row"><span>From</span><strong>${esc(b.start_district)}</strong></div>
 ${b.distance_km ? `<div class="booking-row"><span>Route distance</span><strong>${b.distance_km} km one way</strong></div>` : ''}
 <div class="booking-row"><span>Travel date</span><strong>${esc(b.travel_date)}</strong></div>
+${b.departure_time ? `<div class="booking-row"><span>Transport departure time</span><strong>${esc(b.departure_time)}</strong></div>` : ''}
 <div class="booking-row"><span>Seats booked</span><strong>${b.transport_persons}</strong></div>
 <div class="booking-row"><span>Transport</span><strong>${esc(b.transport_name)}</strong></div>
 <div class="booking-row"><span>Hotel room</span><strong>${esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`)}</strong></div>
@@ -255,8 +279,8 @@ async function admin() {
 <span class="fw-bold">${esc(b.customer_code)}</span><span>${esc(b.username)}</span><span class="text-secondary me-auto">${esc(b.package || b.division)}</span><span class="tag ${b.status}">${b.status}</span><strong>${tk(b.final_total)}</strong></button></h2>
 <div id="bk${b.id}" class="accordion-collapse collapse" data-bs-parent="#bk-acc"><div class="accordion-body"><div class="row g-4">
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Customer</h3>${kv('Username', esc(b.username))}${kv('Mobile', esc(b.mobile))}${kv('Email', esc(b.email))}${kv('Booked at', esc(b.created_at))}</div>
-<div class="col-md-6 col-xl-3"><h3 class="mt-0">Trip</h3>${kv('From', esc(b.start_district))}${kv('To', esc(b.division))}${kv('Package', esc(b.package))}${b.distance_km ? kv('Route distance (one way)', `${b.distance_km} km`) : ''}${kv('Travel date', esc(b.travel_date))}${kv('Seats booked', b.transport_persons)}</div>
-<div class="col-md-6 col-xl-3"><h3 class="mt-0">Transport and stay</h3>${kv('Transport', esc(`${b.transport_name} ${b.transport_type}`))}${kv('Room', esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`))}${kv('Nights', b.nights)}${kv('Meals', b.meals.length ? b.meals.map(esc).join('<br>') : 'None')}</div>
+<div class="col-md-6 col-xl-3"><h3 class="mt-0">Trip</h3>${kv('From', esc(b.start_district))}${kv('To', esc(b.division))}${kv('Package', esc(b.package))}${b.distance_km ? kv('Route distance (one way)', `${b.distance_km} km`) : ''}${kv('Travel date', esc(b.travel_date))}${b.departure_time ? kv('Transport departure time', esc(b.departure_time)) : ''}${kv('Seats booked', b.transport_persons)}</div>
+<div class="col-md-6 col-xl-3"><h3 class="mt-0">Transport and stay</h3>${kv('Transport', esc(`${b.transport_name} ${b.transport_type}`))}${b.departure_time ? kv('Departure time', esc(b.departure_time)) : ''}${kv('Room', esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`))}${kv('Nights', b.nights)}${kv('Meals', b.meals.length ? b.meals.map(esc).join('<br>') : 'None')}</div>
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Money</h3>${kv('Transport', tk(b.transport_cost))}${kv('Hotel', tk(b.hotel_cost))}${kv('Meals', tk(b.meal_cost))}${b.discount ? kv('Discount', '-' + tk(b.discount)) : ''}${kv('Total', `<strong>${tk(b.final_total)}</strong>`)}
 ${kv('Demo payment', b.method ? esc(`${b.method}, ID ${b.transaction_id}`) : 'Not paid')}${kv('Demo advance', b.advance ? tk(b.advance) : '-')}${kv('Due later', b.remaining ? tk(b.remaining) : '-')}${b.status === 'cancelled' ? kv('Refund to give back', tk(b.refund_amount)) : ''}</div>
 </div></div></div></div>`).join('') || '<p class="mut">No bookings yet.</p>'}</div>`
@@ -359,6 +383,12 @@ document.addEventListener('click', async e => {
       for (const source of firstDay) {
         document.querySelectorAll(`.meal-choice[data-meal-type="${source.dataset.mealType}"]`).forEach(target => {
           target.value = source.value;
+        });
+        const sourcePeople = document.querySelector(`[data-meal-persons][data-meal-day="0"][data-meal-type="${source.dataset.mealType}"]`);
+        document.querySelectorAll(`[data-meal-persons][data-meal-type="${source.dataset.mealType}"]`).forEach(target => {
+          target.value = sourcePeople?.value || target.value;
+          target.disabled = !source.value;
+          target.required = !!source.value;
         });
       }
       firstDay[0]?.dispatchEvent(new Event('input', { bubbles: true }));

@@ -513,7 +513,7 @@ footer{border-top-color:var(--line);background:rgba(255,255,255,.74)}
 .meal-item strong{color:var(--ink);font-size:.91rem;line-height:1.35}
 .meal-item span{color:var(--green);font-size:.88rem;font-weight:700}
 .meal-card>a{margin-top:auto}
-.meal-choice-field{display:grid;align-content:start;gap:7px}
+.meal-choice-field{display:grid;align-content:start;gap:7px}.meal-choice-field label{margin:0}
 .meal-choice-photo{display:block;width:100%;height:118px;border:1px solid var(--line);border-radius:10px;object-fit:cover;background:#eaf4ef}
 .meal-choice-grid{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
 @media(max-width:560px){.meal-grid{grid-template-columns:1fr}.meal-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
