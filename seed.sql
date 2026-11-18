@@ -244,7 +244,7 @@ INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner
 INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Prawn Curry with Rice',360,'/images/pexels-prawn-curry.jpg');
 
 -- Snacks
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Samosa',30,'/images/pexels-samosa.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Pizza',180,'/images/pexels-pizza.jpg');
 INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Singara',25,'/images/pexels-singara.jpg');
 INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Vegetable Chop',35,'/images/pexels-vegetable-pakora.jpg');
 INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Chicken Roll',80,'/images/pexels-chicken-roll.jpg');

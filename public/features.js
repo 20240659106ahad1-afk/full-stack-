@@ -77,7 +77,7 @@ ${(stop?.restaurants || []).map(item => `<button type="button" class="food-resta
 ${restaurant ? `<div class="food-menu"><h4>${esc(restaurant.name)} menu</h4>
 ${mealTypes.map(type => `<fieldset class="food-menu-category"><legend>${labels[type]}</legend>
 <div class="food-item-gallery">${restaurant.menu.filter(item => item.meal_type === type).map(item =>
-  `<article class="food-item-card"><img src="${esc(item.image_url || '/images/meal-snacks.jpg')}" alt="${esc(item.name)}" loading="lazy">
+  `<article class="food-item-card"><img src="${esc(item.image_url || '/images/pexels-pizza.jpg')}" alt="${esc(item.name)}" loading="lazy">
 <div><strong>${esc(item.name)}</strong><span>${tk(item.price)}</span></div></article>`).join('')}</div>
 ${Array.from({ length: persons }, (_, personIndex) => {
   const person = personIndex + 1, key = `${type}:${person}`, choice = entry.items[key] || {};
