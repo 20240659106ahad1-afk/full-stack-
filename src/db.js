@@ -248,6 +248,62 @@ if (!db.prepare('select 1 from schema_migrations where name = ?').get(mealPhotos
     db.prepare('insert into schema_migrations(name) values(?)').run(mealPhotosMigration);
   })();
 }
+const extraFoodMigration = 'extra-food-items-with-photos-2026-11-18';
+if (!db.prepare('select 1 from schema_migrations where name = ?').get(extraFoodMigration)) {
+  db.transaction(() => {
+    const addMeal = db.prepare('insert or ignore into meal_items(meal_type,name,price,image_url) values(?,?,?,?)');
+    for (const [type, name, price, image] of [
+      ['breakfast', 'Halwa Puri', 90, '/images/meal-paratha.jpg'],
+      ['breakfast', 'Egg and Cheese Sandwich', 120, '/images/meal-breakfast.jpg'],
+      ['lunch', 'Morog Polao', 280, '/images/meal-polao.jpg'],
+      ['lunch', 'Beef Kala Bhuna with Rice', 320, '/images/meal-beef-bhuna.jpg'],
+      ['dinner', 'Chicken Roast with Polao', 300, '/images/meal-polao.jpg'],
+      ['dinner', 'Prawn Curry with Rice', 360, '/images/meal-hilsa.jpg'],
+    ]) addMeal.run(type, name, price, image);
+
+    const addSnack = db.prepare('insert or ignore into snack_items(name,price,image_url) values(?,?,?)');
+    for (const [name, price, image] of [
+      ['Jilapi', 40, '/images/meal-snacks.jpg'],
+      ['Vegetable Pakora', 50, '/images/meal-pakora.jpg'],
+      ['Grilled Chicken Sandwich', 140, '/images/meal-chicken-roll.jpg'],
+      ['Lemon Tea', 30, '/images/meal-breakfast.jpg'],
+    ]) addSnack.run(name, price, image);
+
+    const updateExistingMealPhotos = db.prepare(`update restaurant_menu_items set image_url = (
+      select image_url from meal_items where meal_items.meal_type = restaurant_menu_items.meal_type
+        and meal_items.name = restaurant_menu_items.name)
+      where meal_type in ('breakfast','lunch','dinner') and image_url = ''
+        and exists(select 1 from meal_items where meal_items.meal_type = restaurant_menu_items.meal_type
+          and meal_items.name = restaurant_menu_items.name)`);
+    const updateExistingSnackPhotos = db.prepare(`update restaurant_menu_items set image_url = (
+      select image_url from snack_items where snack_items.name = restaurant_menu_items.name)
+      where meal_type = 'snacks' and image_url = ''
+        and exists(select 1 from snack_items where snack_items.name = restaurant_menu_items.name)`);
+    updateExistingMealPhotos.run();
+    updateExistingSnackPhotos.run();
+
+    const restaurants = db.prepare('select id from restaurants').all();
+    const addMenuItem = db.prepare(`insert into restaurant_menu_items(restaurant_id,meal_type,name,price,image_url)
+      select ?,?,?,?,? where not exists(
+        select 1 from restaurant_menu_items where restaurant_id=? and meal_type=? and name=?)`);
+    const meals = db.prepare(`select meal_type,name,price,image_url from meal_items
+      where name in ('Halwa Puri','Egg and Cheese Sandwich','Morog Polao','Beef Kala Bhuna with Rice',
+        'Chicken Roast with Polao','Prawn Curry with Rice')`).all();
+    const snacks = db.prepare(`select name,price,image_url from snack_items
+      where name in ('Jilapi','Vegetable Pakora','Grilled Chicken Sandwich','Lemon Tea')`).all();
+    for (const restaurant of restaurants) {
+      for (const item of meals) {
+        addMenuItem.run(restaurant.id, item.meal_type, item.name, item.price, item.image_url,
+          restaurant.id, item.meal_type, item.name);
+      }
+      for (const item of snacks) {
+        addMenuItem.run(restaurant.id, 'snacks', item.name, item.price, item.image_url,
+          restaurant.id, 'snacks', item.name);
+      }
+    }
+    db.prepare('insert into schema_migrations(name) values(?)').run(extraFoodMigration);
+  })();
+}
 const priceMigration = 'catalog-prices-2026-10-24';
 if (!db.prepare('select 1 from schema_migrations where name = ?').get(priceMigration)) {
   db.transaction(() => {
