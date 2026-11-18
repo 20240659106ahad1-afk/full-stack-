@@ -113,13 +113,20 @@ const vehicleEmoji = name => {
 
 async function transportBrowse() {
   cat = cat || await api('/catalog');
-  const cards = cat.transports.map(t => `<article class="transport-card">
+  const minimumRouteDistance = Math.min(...cat.routeDistances.map(route => route.distance_km));
+  const cards = cat.transports.map(t => {
+    const minimumBaseFare = Math.max(Number(t.cost_per_person) || 0, Number.isFinite(minimumRouteDistance) ? minimumRouteDistance : 0);
+    const minimumFare = Math.ceil(minimumBaseFare * (String(t.type).toLowerCase() === 'ac' ? 1.5 : 1));
+    return `<article class="transport-card">
 <div class="transport-card-icon" aria-hidden="true">${vehicleEmoji(t.name)}</div>
 <span class="tour-location">${esc(t.route)}</span><h2>${esc(`${t.name} ${t.type}`)}</h2>
 <p>Comfortable ${esc(t.type.toLowerCase())} transport for your Bangladesh trip.</p>
 <div class="transport-card-meta"><span>Seats</span><strong>${t.capacity}</strong></div>
+<div class="transport-card-meta"><span>Fare from</span><strong>${tk(minimumFare)} / seat</strong></div>
+<div class="transport-card-meta"><span>Departures</span><strong>Morning · Noon · Evening · Night</strong></div>
 <a class="tour-link" href="#/plan?transport=${encodeURIComponent(t.id)}">Plan with this transport <span aria-hidden="true">→</span></a>
-</article>`).join('');
+</article>`;
+  }).join('');
   $('#app').classList.remove('wide');
   $('#app').innerHTML = `<section class="listing-heading"><span class="section-kicker">TRAVEL YOUR WAY</span><h1>Browse transport</h1>
 <p>Compare available vehicles and choose the ride that suits your trip.</p></section>
@@ -141,7 +148,7 @@ async function bookingSuccess(id) {
 <div class="success-summary">
 <div class="success-trip"><span class="summary-label">YOUR TRIP</span><h2>${esc(booking.package || booking.division)}</h2>
 <p>${esc(booking.start_district)} <span aria-hidden="true">→</span> ${esc(booking.division)}</p>
-<div class="summary-meta"><span>Travel date<strong>${esc(booking.travel_date)}</strong></span><span>Departure time<strong>${esc(booking.departure_time || 'Not set')}</strong></span><span>Seats<strong>${booking.transport_persons}</strong></span><span>Stay<strong>${esc(booking.room_type)}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights</strong></span></div>
+<div class="summary-meta"><span>Travel date<strong>${esc(booking.travel_date)}</strong></span><span>Departure time<strong>${esc(booking.departure_time || 'Not set')}</strong></span><span>Seats<strong>${booking.seat_numbers?.length ? booking.seat_numbers.join(', ') : booking.transport_persons}</strong></span><span>Stay<strong>${esc(booking.room_type)}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights</strong></span></div>
 ${booking.meals.length ? `<p class="success-meals"><strong>Meals selected:</strong> ${booking.meals.map(esc).join(' · ')}</p>` : ''}
 </div><div class="success-price"><span class="summary-label">PRICE SUMMARY</span>
 <div class="booking-row"><span>Total amount</span><strong>${tk(booking.final_total)}</strong></div>
@@ -187,7 +194,7 @@ async function home() {
 </div><div class="hero-stats"><span><strong>${cat.divisions.length}</strong> divisions</span><i></i><span><strong>${cat.packages.length}</strong> curated tours</span><i></i><span><strong>30%</strong> savings available</span></div></section>
 <div class="wrap home-content"><section id="featured-tours" class="home-section"><div class="section-heading"><div><span class="section-kicker">FIND YOUR NEXT ESCAPE</span><h2>Featured tour packages</h2><p>Explore curated trips across Bangladesh's beautiful regions.</p></div><a href="#/tours" class="section-link">View all tours <span aria-hidden="true">→</span></a></div><div class="tour-grid">${featured}</div></section>
 <section id="destinations" class="home-section"><div class="section-heading"><div><span class="section-kicker">A COUNTRY FULL OF STORIES</span><h2>Explore by destination</h2><p>Choose a region and start planning your journey.</p></div></div><div class="tiles">${tiles}</div></section>
-<section id="customize-meals" class="home-section"><div class="section-heading"><div><span class="section-kicker">A TASTE OF BANGLADESH</span><h2 class="food-section-title"><img src="/images/meal-lunch.jpg" alt="">Customize every meal</h2><p>Choose breakfast, lunch, dinner and snacks separately for each day of your trip.</p></div><a href="#/plan" class="section-link">Customize meals <span aria-hidden="true">→</span></a></div><div class="meal-grid">${mealCards}</div></section>
+<section id="customize-meals" class="home-section"><div class="section-heading"><div><span class="section-kicker">A TASTE OF BANGLADESH</span><h2 class="food-section-title"><img src="/images/meal-lunch.jpg" alt="">Customize every meal</h2><p>Browse restaurants at your tour stops and choose separate meals for each traveller.</p></div><a href="#/plan" class="section-link">Customize meals <span aria-hidden="true">→</span></a></div><div class="meal-grid">${mealCards}</div></section>
 ${reviews}<section class="home-section"><div class="section-heading"><div><span class="section-kicker">SIMPLE FROM START TO FINISH</span><h2>How it works</h2></div></div><div class="how">
 <div><b>1</b><h3>Plan your trip</h3><p>Choose where you start, where you go, how you travel, where you stay and what you eat.</p></div>
 <div><b>2</b><h3>Watch the price</h3><p>A live ticket adds everything up for you and applies the discount.</p></div>

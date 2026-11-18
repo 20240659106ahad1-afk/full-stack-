@@ -8,8 +8,9 @@ A full-stack travel planning and booking application for exploring tour packages
 
 - Browse destinations and tour packages
 - Browse transport options and start a trip with a selected vehicle
-- Plan trips with transport, departure times, hotel, travel dates, and seat availability
-- Select meals and snacks for each day, set servings for each, and view server-calculated pricing
+- Plan trips with morning, noon, evening, or night departures; choose individual seats and see booked seats marked unavailable
+- Compare transport fares, with higher AC and flight fares
+- Browse restaurants and menus at tour spots, select different meals for each traveller, and edit booked food orders and default preferences from Profile
 - Create an account, sign in, and manage a profile
 - Save bookings, confirm them using an email OTP, and cancel bookings
 - Submit feedback

@@ -128,6 +128,10 @@ if (!has('booking_snack_selections', 'persons')) {
 }
 if (!has('bookings', 'distance_km')) db.exec('alter table bookings add column distance_km real not null default 0');
 if (!has('bookings', 'departure_time')) db.exec('alter table bookings add column departure_time text');
+db.exec(`create table if not exists booking_seats(
+  booking_id integer not null references bookings(id) on delete cascade,
+  seat_number integer not null check(seat_number > 0),
+  primary key(booking_id, seat_number))`);
 const defaultMealPhotos = {
   breakfast: '/images/meal-breakfast.jpg',
   lunch: '/images/meal-lunch.jpg',
@@ -144,6 +148,66 @@ for (const [name, price] of [
   ['Fuchka', 60],
   ['Chotpoti', 70],
 ]) addSnack.run(name, price, '/images/meal-snacks.jpg');
+db.exec(`create table if not exists restaurants(
+  id integer primary key autoincrement,
+  package_stop_id integer not null references package_stops(id) on delete cascade,
+  name text not null,
+  description text not null default '',
+  unique(package_stop_id, name));
+create table if not exists restaurant_menu_items(
+  id integer primary key autoincrement,
+  restaurant_id integer not null references restaurants(id) on delete cascade,
+  meal_type text not null check(meal_type in ('breakfast','lunch','dinner','snacks')),
+  name text not null,
+  price real not null check(price >= 0),
+  image_url text not null default '');
+create table if not exists booking_food_orders(
+  booking_id integer not null references bookings(id) on delete cascade,
+  day integer not null check(day between 1 and 7),
+  meal_type text not null check(meal_type in ('breakfast','lunch','dinner','snacks')),
+  person_number integer not null check(person_number > 0),
+  restaurant_id integer not null references restaurants(id),
+  menu_item_id integer not null references restaurant_menu_items(id),
+  quantity integer not null default 1 check(quantity between 1 and 10),
+  primary key(booking_id, day, meal_type, person_number));
+create table if not exists user_food_preferences(
+  user_id integer not null references users(id) on delete cascade,
+  meal_type text not null check(meal_type in ('breakfast','lunch','dinner','snacks')),
+  dish_name text not null,
+  primary key(user_id, meal_type))`);
+const restaurantsMigration = 'spot-restaurants-and-menus-2026-11-18';
+if (!db.prepare('select 1 from schema_migrations where name = ?').get(restaurantsMigration)) {
+  db.transaction(() => {
+    const stops = db.prepare('select id, stop_name from package_stops order by id').all();
+    const addRestaurant = db.prepare('insert or ignore into restaurants(package_stop_id,name,description) values(?,?,?)');
+    const getRestaurant = db.prepare('select id from restaurants where package_stop_id = ? and name = ?');
+    const menus = [
+      ...db.prepare('select meal_type, name, price, image_url from meal_items order by meal_type, id').all(),
+      ...db.prepare('select ? as meal_type, name, price, image_url from snack_items order by id').all('snacks'),
+    ];
+    const addMenuItem = db.prepare(`insert into restaurant_menu_items(restaurant_id,meal_type,name,price,image_url)
+      select ?,?,?,?,? where not exists(
+        select 1 from restaurant_menu_items where restaurant_id=? and meal_type=? and name=?)`);
+    stops.forEach((stop, index) => {
+      for (const [suffix, description] of [
+        ['Local Kitchen', 'Bangladeshi local favourites and fresh meals'],
+        ['Family Restaurant', 'A comfortable stop for family meals and snacks'],
+      ]) {
+        const name = `${stop.stop_name} ${suffix}`;
+        addRestaurant.run(stop.id, name, description);
+        const restaurant = getRestaurant.get(stop.id, name);
+        for (const type of ['breakfast', 'lunch', 'dinner', 'snacks']) {
+          menus.filter(item => item.meal_type === type).forEach((item, itemIndex, categoryItems) => {
+            if (suffix === 'Family Restaurant' && categoryItems.length > 1 && itemIndex % 2 !== index % 2) return;
+            addMenuItem.run(restaurant.id, item.meal_type, item.name, item.price, item.image_url,
+              restaurant.id, item.meal_type, item.name);
+          });
+        }
+      }
+    });
+    db.prepare('insert into schema_migrations(name) values(?)').run(restaurantsMigration);
+  })();
+}
 const mealPhotosMigration = 'dish-specific-meal-photos-2026-10-24';
 if (!db.prepare('select 1 from schema_migrations where name = ?').get(mealPhotosMigration)) {
   db.transaction(() => {

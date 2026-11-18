@@ -5,6 +5,12 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const paymentFields = () => `<label>Payment method<select name="method">${METHODS.map(method => `<option>${method}</option>`).join('')}</select></label>
 <label data-account-label><span>bKash phone number</span><input name="account" type="text" inputmode="numeric" pattern="01[3-9][0-9]{8}" maxlength="24" placeholder="01XXXXXXXXX" autocomplete="off" required></label>
 <p class="mut">Demo only: no money will be taken. Your account number is not stored; the verification code goes to your registered email.</p>`;
+const departureGroups = [
+  ['Morning', ['06:00', '08:00', '10:00']],
+  ['Noon', ['12:00', '14:00']],
+  ['Evening', ['16:00', '18:00']],
+  ['Night', ['20:00', '22:00', '23:30']],
+];
 const setupPaymentForms = () => document.querySelectorAll('.booking-payment').forEach(form => {
   const method = form.elements.method, label = form.querySelector('[data-account-label] span'), account = form.elements.account;
   const updateAccountField = () => {
@@ -30,16 +36,152 @@ const pwField = (name, label, auto) => `<label>${label}${pwInput(name, `required
 
 const payload = f => {
   const d = Object.fromEntries(new FormData(f));
-  d.meal_plan = Array.from({ length: Math.min(Math.max(+f.nights.value || 1, 1), 7) }, (_, day) =>
-    Object.fromEntries(['breakfast', 'lunch', 'dinner', 'snacks'].flatMap(type => {
-      const selection = f.querySelector(`[data-meal-day="${day}"][data-meal-type="${type}"]`);
-      return [
-        [type, selection.value || null],
-        [`${type}_persons`, selection.closest('.meal-choice-field').querySelector('[data-meal-persons]').value || null],
-      ];
-    })));
+  d.seat_numbers = JSON.parse(d.seat_numbers || '[]');
+  d.food_orders = tripFoodEditor?.orders() || [];
   return d;
 };
+
+function mountFoodEditor(container, stops, options = {}) {
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'];
+  const labels = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
+  const stopById = new Map(stops.map(stop => [stop.id, stop]));
+  const state = new Map();
+  let days = Math.min(Math.max(Number(options.days) || 1, 1), 7);
+  let persons = Math.max(1, Number(options.persons) || 1);
+  for (const order of options.initialOrders || []) {
+    const stop = stopById.get(stops.find(item => item.restaurants.some(r => r.id === order.restaurant_id))?.id);
+    if (!stop) continue;
+    const day = Number(order.day), type = order.meal_type, person = Number(order.person_number);
+    if (day < 1 || day > days || person < 1 || person > persons || !mealTypes.includes(type)) continue;
+    const entry = state.get(day) || { stop_id: stop.id, restaurant_id: order.restaurant_id, items: {} };
+    entry.stop_id = stop.id;
+    entry.restaurant_id = order.restaurant_id;
+    entry.items[`${type}:${person}`] = { menu_item_id: order.menu_item_id, quantity: order.quantity || 1 };
+    state.set(day, entry);
+  }
+  for (let day = 1; day <= days; day++) {
+    if (!state.has(day)) state.set(day, { stop_id: stops[0]?.id || '', restaurant_id: '', items: {} });
+  }
+  const render = () => {
+    container.innerHTML = Array.from({ length: days }, (_, index) => {
+      const day = index + 1, entry = state.get(day), stop = stopById.get(Number(entry.stop_id));
+      const restaurant = stop?.restaurants.find(item => item.id == entry.restaurant_id);
+      return `<section class="food-day panel">
+<h3>Day ${day} menu</h3>
+<label>Choose a travel spot
+<select data-food-spot="${day}">${stops.map(item => opt(item.id, item.stop_name, item.id == entry.stop_id)).join('')}</select></label>
+<div class="food-restaurants" role="group" aria-label="Restaurants at ${esc(stop?.stop_name || 'this spot')}">
+${(stop?.restaurants || []).map(item => `<button type="button" class="food-restaurant${item.id == entry.restaurant_id ? ' active' : ''}" data-food-restaurant="${day}" data-restaurant-id="${item.id}">
+<strong>${esc(item.name)}</strong><small>${esc(item.description)}</small></button>`).join('') || '<p class="mut">No restaurant is available at this spot.</p>'}
+</div>
+${restaurant ? `<div class="food-menu"><h4>${esc(restaurant.name)} menu</h4>
+${mealTypes.map(type => `<fieldset class="food-menu-category"><legend>${labels[type]}</legend>
+${Array.from({ length: persons }, (_, personIndex) => {
+  const person = personIndex + 1, key = `${type}:${person}`, choice = entry.items[key] || {};
+  const menu = restaurant.menu.filter(item => item.meal_type === type);
+  return `<div class="food-person-row"><label>Person ${person}
+<select data-food-item="${day}" data-meal-type="${type}" data-person="${person}">
+<option value="">Skip ${labels[type].toLowerCase()}</option>
+${menu.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, choice.menu_item_id == item.id)).join('')}
+</select></label>
+<label>Qty<input type="number" min="1" max="10" value="${choice.quantity || 1}" data-food-quantity="${day}" data-meal-type="${type}" data-person="${person}"${choice.menu_item_id ? '' : ' disabled'}></label></div>`;
+}).join('') || '<p class="mut">No menu items in this category.</p>'}
+</fieldset>`).join('')}</div>` : '<p class="mut mb-0">Click a restaurant to see its menu and order separately for each person.</p>'}
+</section>`;
+    }).join('') + (!stops.length ? '<p class="mut">Choose a tour package to browse restaurants at its spots.</p>' : '')
+      + (options.onSave ? '<button type="button" class="mt-3" data-food-save>Save food order</button>' : '');
+  };
+  const orders = () => [...state.entries()].flatMap(([day, entry]) =>
+    Object.entries(entry.items).flatMap(([key, choice]) => {
+      if (!choice.menu_item_id || !entry.restaurant_id) return [];
+      const [meal_type, person] = key.split(':');
+      return [{ day, meal_type, person_number: Number(person), restaurant_id: Number(entry.restaurant_id),
+        menu_item_id: Number(choice.menu_item_id), quantity: Number(choice.quantity) || 1 }];
+    }));
+  const updatePreferenceDefaults = (day, restaurant) => {
+    const entry = state.get(day);
+    for (const type of mealTypes) {
+      const preferredName = options.preferences?.[type];
+      if (!preferredName) continue;
+      const item = restaurant.menu.find(menuItem => menuItem.meal_type === type
+        && menuItem.name.toLowerCase() === preferredName.toLowerCase());
+      if (!item) continue;
+      for (let person = 1; person <= persons; person++) {
+        const key = `${type}:${person}`;
+        if (!entry.items[key]?.menu_item_id) entry.items[key] = { menu_item_id: item.id, quantity: 1 };
+      }
+    }
+  };
+  container.addEventListener('change', event => {
+    const spotSelect = event.target.closest('[data-food-spot]');
+    if (spotSelect) {
+      const day = Number(spotSelect.dataset.foodSpot);
+      state.set(day, { stop_id: Number(spotSelect.value), restaurant_id: '', items: {} });
+      render();
+      options.onChange?.();
+      return;
+    }
+    const itemSelect = event.target.closest('[data-food-item]');
+    if (itemSelect) {
+      const day = Number(itemSelect.dataset.foodItem), entry = state.get(day);
+      const key = `${itemSelect.dataset.mealType}:${itemSelect.dataset.person}`;
+      const choice = entry.items[key] || { quantity: 1 };
+      choice.menu_item_id = itemSelect.value ? Number(itemSelect.value) : '';
+      entry.items[key] = choice;
+      render();
+      options.onChange?.();
+      return;
+    }
+    const quantity = event.target.closest('[data-food-quantity]');
+    if (quantity) {
+      const day = Number(quantity.dataset.foodQuantity), entry = state.get(day);
+      const key = `${quantity.dataset.mealType}:${quantity.dataset.person}`;
+      if (entry.items[key]?.menu_item_id) entry.items[key].quantity = Math.min(10, Math.max(1, Number(quantity.value) || 1));
+      options.onChange?.();
+    }
+  });
+  container.addEventListener('click', async event => {
+    const button = event.target.closest('[data-food-restaurant]');
+    if (button) {
+      const day = Number(button.dataset.foodRestaurant), entry = state.get(day);
+      const restaurantId = Number(button.dataset.restaurantId);
+      const restaurant = stops.flatMap(stop => stop.restaurants).find(item => item.id === restaurantId);
+      entry.restaurant_id = restaurantId;
+      entry.items = {};
+      if (restaurant) updatePreferenceDefaults(day, restaurant);
+      render();
+      options.onChange?.();
+      return;
+    }
+    const save = event.target.closest('[data-food-save]');
+    if (save && options.onSave) {
+      save.disabled = true;
+      try { await options.onSave(orders()); }
+      catch (error) { toast(error.message, 1); }
+      finally { if (save.isConnected) save.disabled = false; }
+    }
+  });
+  render();
+  return {
+    orders,
+    update(nextPersons, nextDays) {
+      persons = Math.max(1, Number(nextPersons) || 1);
+      const count = Math.min(Math.max(Number(nextDays) || 1, 1), 7);
+      for (const [day, entry] of state) {
+        for (const key of Object.keys(entry.items)) {
+          if (Number(key.split(':')[1]) > persons || day > count) delete entry.items[key];
+        }
+      }
+      for (let day = 1; day <= count; day++) {
+        if (!state.has(day)) state.set(day, { stop_id: stops[0]?.id || '', restaurant_id: '', items: {} });
+      }
+      for (const day of state.keys()) if (day > count) state.delete(day);
+      days = count;
+      render();
+    },
+  };
+}
+let tripFoodEditor;
 
 async function plan() {
   cat = await api('/catalog');
@@ -57,19 +199,22 @@ async function plan() {
 <label>Travel date<input name="travel_date" type="date" required min="${today()}"></label>
 <h3 class="step"><b>2</b>How will you travel?</h3>
 <label>Transport<select name="transport_id"></select></label><div id="seats"></div>
-<label>Transport departure time<input name="departure_time" type="time" required></label>
-<label>Number of seats to book<input name="persons" type="number" min="1" value="2" required></label>
+<label>Transport departure time<select name="departure_time" required><option value="" selected disabled>Choose a departure time</option>
+${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.map(time => opt(time, time)).join('')}</optgroup>`).join('')}</select></label>
+<p class="mut small mb-2">Departures are available in the morning, noon, evening and night.</p>
+<div class="seat-selection-summary"><span>Seats selected</span><strong id="selected-seat-count">0</strong><input type="hidden" name="persons" value="0"><input type="hidden" name="seat_numbers" value="[]"></div>
 <h3 class="step"><b>3</b>Where will you stay?</h3>
 <label>Hotel room<select name="room_id">${cat.rooms.map(r => opt(r.id, `${r.room_type}, ${r.bed_count} bed${r.bed_count === 1 ? '' : 's'}, sleeps ${r.capacity}, ${r.price_per_night} Tk a night`)).join('')}</select></label>
 <label>Nights<input name="nights" type="number" min="1" value="2"></label>
 <button type="button" class="ghost mt-3" data-go="meals">Next: customize meals</button></div>
 <div class="tab-pane fade" id="tab-meals">
-<h3 class="step"><b>4</b>Choose your food <small>select breakfast, lunch, dinner and snacks separately for each day</small></h3>
-<div id="day-plan"></div><button type="button" class="ghost" data-act="copyday">Use Day 1 for every day</button>
+<h3 class="step"><b>4</b>Choose your food <small>open a spot's restaurants, browse a menu and choose separately for each traveller</small></h3>
+<div id="day-plan"></div>
 <div><button type="submit" class="mt-4">Payment</button></div></div>
  </div></form>
 <aside class="ticket" id="ticket">${miniLoader()}</aside></div>`;
-  const f = $('#trip'); let avail = {};
+  const f = $('#trip'); let avail = {}, bookedSeats = {}, selectedSeats = [], availabilityError = '';
+  const foodPreferences = await api('/bookings/preferences');
   const updateDestination = () => {
     const destination = cat.divisions.find(d => d.id == f.destination_division_id.value);
     if (!destination) {
@@ -98,52 +243,90 @@ async function plan() {
   const seatUI = () => {
     const t = cat.transports.find(x => x.id == f.transport_id.value); if (!t) return;
     const left = avail[t.id] ?? t.capacity, pct = Math.round(left / t.capacity * 100);
-    f.persons.max = left || 1;
-    $('#seats').innerHTML = f.travel_date.value
+    const booked = new Set(bookedSeats[t.id] || []);
+    $('#seats').innerHTML = availabilityError
+      ? `<p class="text-danger small">${esc(availabilityError)}</p>`
+      : f.travel_date.value && f.departure_time.value
       ? `<div class="progress mt-2" style="height:8px"><div class="progress-bar ${pct > 50 ? 'bg-success' : pct > 20 ? 'bg-warning' : 'bg-danger'}" style="width:${pct}%"></div></div>
-<small class="text-secondary">${left} of ${t.capacity} seats left on ${esc(f.travel_date.value)}. ${left ? `You can book up to ${left}.` : 'This vehicle is full on this date.'}</small>`
-      : '<small class="text-secondary">Choose your travel date to check seat availability.</small>';
+<small class="text-secondary">${left} of ${t.capacity} seats left for ${esc(f.departure_time.value)} on ${esc(f.travel_date.value)}.</small>
+<div class="seat-legend"><span><i class="seat-legend-available"></i> Available</span><span><i class="seat-legend-selected"></i> Selected</span><span><i class="seat-legend-booked"></i> Booked</span></div>
+<div class="seat-grid" role="group" aria-label="Choose seats">${Array.from({ length: t.capacity }, (_, i) => i + 1).map(number => {
+        const isBooked = booked.has(number), isSelected = selectedSeats.includes(number);
+        return `<button type="button" class="seat-option${isBooked ? ' booked' : isSelected ? ' selected' : ''}" data-seat="${number}" aria-pressed="${isSelected}" aria-label="Seat ${number}${isBooked ? ', booked' : isSelected ? ', selected' : ', available'}"${isBooked ? ' disabled' : ''}>${number}</button>`;
+      }).join('')}</div>`
+      : '<small class="text-secondary">Choose a travel date and departure time to see available seats.</small>';
   };
   const fillTransports = () => {
     const requested = new URLSearchParams(location.hash.split('?')[1] || '').get('transport');
     const cur = f.transport_id.value || requested;
     f.transport_id.innerHTML = cat.transports.map(t => { const left = avail[t.id] ?? t.capacity;
-      return `<option value="${t.id}"${left ? '' : ' disabled'}${t.id == cur ? ' selected' : ''}>${esc(`${t.name} ${t.type}, ${left}/${t.capacity} seats left`)}</option>`; }).join('');
+      return `<option value="${t.id}"${t.id == cur ? ' selected' : ''}>${esc(`${t.name} ${t.type}, ${left}/${t.capacity} seats left`)}</option>`; }).join('');
     seatUI();
   };
   const loadSeats = async () => {
-    if (!f.travel_date.value) {
-      avail = {};
+    if (!f.travel_date.value || !f.departure_time.value || !f.transport_id.value) {
+      avail = {}; bookedSeats = {}; availabilityError = '';
       fillTransports();
       return;
     }
-    try { avail = Object.fromEntries((await api('/bookings/availability?date=' + f.travel_date.value)).map(x => [x.id, x.left])); } catch { avail = {}; }
+    try {
+      const params = new URLSearchParams({ date: f.travel_date.value, departure_time: f.departure_time.value });
+      const options = await api('/bookings/availability?' + params);
+      availabilityError = '';
+      avail = Object.fromEntries(options.map(x => [x.id, x.left]));
+      bookedSeats = Object.fromEntries(options.map(x => [x.id, x.booked_seats]));
+      const unavailable = new Set(bookedSeats[f.transport_id.value] || []);
+      selectedSeats = selectedSeats.filter(number => !unavailable.has(number));
+      syncSeatSelection();
+    } catch (error) {
+      avail = {}; bookedSeats = {};
+      availabilityError = 'Could not load seat availability. Please change the date or departure time and try again.';
+      toast(error.message, 1);
+    }
     fillTransports();
   };
-  const dayPlan = () => {
-    const n = Math.min(Math.max(+f.nights.value || 1, 1), 7);
-    const old = [...f.querySelectorAll('.meal-choice')].map(s => [s.dataset.mealDay, s.dataset.mealType, s.value]);
-    const oldSelections = new Map(old.map(([day, type, value]) => [`${day}:${type}`, value]));
-    const oldPersons = new Map([...f.querySelectorAll('[data-meal-persons]')].map(input =>
-      [`${input.dataset.mealDay}:${input.dataset.mealType}`, input.value]));
-    const labels = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
-    $('#day-plan').innerHTML = Array.from({ length: n }, (_, day) => `<section class="meal-day">
-<h4>Day ${day + 1}</h4><div class="meal-choice-grid">${Object.entries(labels).map(([type, label]) => {
-      const items = type === 'snacks' ? cat.snacks : cat.meals.filter(item => item.meal_type === type);
-      const selected = items.find(item => item.id == oldSelections.get(`${day}:${type}`));
-      const count = oldPersons.get(`${day}:${type}`) || f.persons.value || 1;
-      return `<div class="meal-choice-field"><label>${label}
-<select class="meal-choice" data-meal-day="${day}" data-meal-type="${type}"><option value="">Skip ${label.toLowerCase()}</option>
-${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.id === item.id)).join('')}</select></label>
-<label>People eating
-<input type="number" min="1" max="${+f.persons.value || 1}" value="${count}" data-meal-persons data-meal-day="${day}" data-meal-type="${type}" aria-label="People eating ${label.toLowerCase()} on day ${day + 1}"${selected ? ' required' : ' disabled'}></label>
-<img class="meal-choice-photo" src="${esc(selected?.image_url || `/images/meal-${type}.jpg`)}" alt="${esc(selected?.name || `${label} options`)}" loading="lazy"></div>`;
-    }).join('')}</div></section>`).join('')
-      + (+f.nights.value > 7 ? '<p class="text-secondary small">Meals can be customized for the first 7 days.</p>' : '');
+  const syncSeatSelection = () => {
+    f.persons.value = selectedSeats.length;
+    f.seat_numbers.value = JSON.stringify(selectedSeats);
+    $('#selected-seat-count').textContent = selectedSeats.length;
+    tripFoodEditor?.update(selectedSeats.length || 1, +f.nights.value || 1);
+  };
+  $('#seats').addEventListener('click', e => {
+    const button = e.target.closest('[data-seat]');
+    if (!button || button.disabled) return;
+    const number = Number(button.dataset.seat);
+    selectedSeats = selectedSeats.includes(number)
+      ? selectedSeats.filter(seat => seat !== number)
+      : [...selectedSeats, number].sort((a, b) => a - b);
+    syncSeatSelection();
+    seatUI();
+    clearTimeout(quoteTimer); quoteTimer = setTimeout(quote, 200);
+  });
+  const dayPlan = async () => {
+    const packageId = f.package_id.value;
+    if (!packageId) {
+      tripFoodEditor = null;
+      $('#day-plan').innerHTML = '<p class="mut">Choose a tour package to browse restaurants at each spot.</p>';
+      return;
+    }
+    const { stops } = await api('/catalog/restaurants?package_id=' + encodeURIComponent(packageId));
+    tripFoodEditor = mountFoodEditor($('#day-plan'), stops, {
+      days: +f.nights.value || 1, persons: +f.persons.value || 1, preferences: foodPreferences,
+      onChange: () => {
+        clearTimeout(quoteTimer);
+        quoteTimer = setTimeout(quote, 200);
+      },
+    });
+    if (+f.nights.value > 7) $('#day-plan').insertAdjacentHTML('beforeend',
+      '<p class="text-secondary small">Restaurant orders can be customized for the first 7 days.</p>');
   };
   const quote = async () => {
     const ticket = $('#ticket');
     if (!ticket) return;
+    if (!selectedSeats.length) {
+      ticket.innerHTML = '<p class="mut mb-0">Choose a travel date and departure time, then select at least one available seat to see the price.</p>';
+      return;
+    }
     if (!f.start_district_id.value || !f.destination_division_id.value || !f.package_id.value) {
       ticket.innerHTML = '<p class="mut mb-0">Choose your starting district, destination and tour package to see the price.</p>';
       return;
@@ -157,7 +340,7 @@ ${items.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, selected?.
         .map(([type, label]) => `<div class="ln"><span>${label} (${q.mealPersonCounts[type]} servings)</span><span>${tk(q.mealBreakdown[type])}</span></div>`).join('');
       ticket.innerHTML = `<h2>${esc(p ? p.name : 'Your trip')}</h2><p>${p ? esc(p.stops.join(' to ')) : ''}</p>
 <div class="ln"><span>Distance (one way)</span><span>${q.distanceKm} km to ${esc(q.finalStop)}</span></div>
-<div class="ln"><span>Fare per seat (${esc(transport?.type || '')})</span><span>${q.distanceKm} km × ৳1${q.acSurchargePerSeat ? ' + ৳20 AC fee' : ''} = ${tk(q.oneWayFarePerPerson)}</span></div>
+<div class="ln"><span>Fare per seat (${esc(transport?.type || '')})</span><span>${tk(q.fareBasePerPerson)} base${q.acSurchargePerSeat ? ` + ${tk(q.acSurchargePerSeat)} AC premium` : ''} = ${tk(q.oneWayFarePerPerson)}</span></div>
 <div class="ln"><span>Transport (${q.persons} seats, one way)</span><span>${tk(q.transport)}</span></div>
 ${[['Hotel', q.hotel]].map(([k, v]) => `<div class="ln"><span>${k}</span><span>${tk(v)}</span></div>`).join('')}
 ${mealLines}<div class="ln"><span>Food items (${q.selectedMeals.length} selected)</span><span>${tk(q.meal)}</span></div>
@@ -168,39 +351,28 @@ ${q.discount ? `<div class="ln"><span>30% discount</span><span>-${tk(q.discount)
   };
   f.addEventListener('input', async e => {
     const n = e.target.name;
-    if (n === 'persons') {
-      f.querySelectorAll('[data-meal-persons]').forEach(input => {
-        input.max = e.target.value || 1;
-        if (+input.value > +input.max) input.value = input.max;
-      });
-    }
+    const foodControl = e.target.matches('[data-food-item], [data-food-quantity]');
     if (f.dataset.id || (!['start_district_id', 'destination_division_id', 'package_id', 'nights', 'travel_date', 'transport_id', 'persons', 'room_id'].includes(n)
-      && !e.target.classList.contains('meal-choice') && !e.target.hasAttribute('data-meal-persons'))) return;
-    if (n === 'nights') dayPlan();
-    if (n === 'travel_date') await loadSeats();
-    if (n === 'transport_id') seatUI();
+      && n !== 'departure_time' && !foodControl)) return;
+    if (n === 'nights') {
+      if (tripFoodEditor) tripFoodEditor.update(+f.persons.value, +f.nights.value);
+      else await dayPlan();
+    }
+    if (['travel_date', 'transport_id', 'departure_time'].includes(n)) {
+      selectedSeats = [];
+      syncSeatSelection();
+      await loadSeats();
+    }
     clearTimeout(quoteTimer); quoteTimer = setTimeout(quote, 250);
   });
   f.addEventListener('change', e => {
     if (e.target.name === 'destination_division_id') { fillPackages(); updateDestination(); }
-    if (e.target.name === 'package_id') updateDestination();
-    if (e.target.classList.contains('meal-choice')) {
-      const { mealType } = e.target.dataset;
-      const items = mealType === 'snacks' ? cat.snacks : cat.meals.filter(item => item.meal_type === mealType);
-      const selected = items.find(item => item.id == e.target.value);
-      const field = e.target.closest('.meal-choice-field');
-      const image = field.querySelector('.meal-choice-photo');
-      image.src = selected?.image_url || `/images/meal-${mealType}.jpg`;
-      image.alt = selected?.name || `${mealType} options`;
-      const people = field.querySelector('[data-meal-persons]');
-      if (people) {
-        people.disabled = !selected;
-        people.required = !!selected;
-        if (selected && !people.value) people.value = f.persons.value || 1;
-      }
+    if (e.target.name === 'package_id') {
+      updateDestination();
+      dayPlan().catch(error => toast(error.message, 1));
     }
   });
-  fillPackages(); updateDestination(); dayPlan(); fillTransports(); quote();
+  fillPackages(); updateDestination(); await dayPlan(); fillTransports(); syncSeatSelection(); quote();
 }
 
 async function paymentPage(bookingId) {
@@ -215,7 +387,7 @@ async function paymentPage(bookingId) {
 <div><span>Route</span><strong>${esc(booking.start_district)} → ${esc(booking.division)}</strong></div>
 <div><span>Route distance and fare</span><strong>${booking.distance_km} km one way · ${booking.transport_persons} seats</strong></div>
 <div><span>Date and departure time</span><strong>${esc(booking.travel_date)} · ${esc(booking.departure_time || 'Not set')}</strong></div>
-<div><span>Seats booked</span><strong>${booking.transport_persons}</strong></div>
+<div><span>Seats booked</span><strong>${booking.seat_numbers?.length ? booking.seat_numbers.join(', ') : booking.transport_persons}</strong></div>
 <div><span>Transport</span><strong>${esc(`${booking.transport_name} ${booking.transport_type}`)}</strong></div>
 <div><span>Stay</span><strong>${esc(`${booking.room_type}, ${booking.bed_count} bed${booking.bed_count === 1 ? '' : 's'}, ${booking.nights} nights`)}</strong></div>
 <div class="payment-meals"><span>Your meal choices</span><strong>${booking.meals.length ? booking.meals.map(esc).join('<br>') : 'No meals selected'}</strong></div>
@@ -252,7 +424,7 @@ ${list.length ? `<span class="booking-count">${list.length} ${list.length === 1 
 ${b.distance_km ? `<div class="booking-row"><span>Route distance</span><strong>${b.distance_km} km one way</strong></div>` : ''}
 <div class="booking-row"><span>Travel date</span><strong>${esc(b.travel_date)}</strong></div>
 ${b.departure_time ? `<div class="booking-row"><span>Transport departure time</span><strong>${esc(b.departure_time)}</strong></div>` : ''}
-<div class="booking-row"><span>Seats booked</span><strong>${b.transport_persons}</strong></div>
+<div class="booking-row"><span>Seats booked</span><strong>${b.seat_numbers?.length ? b.seat_numbers.join(', ') : b.transport_persons}</strong></div>
 <div class="booking-row"><span>Transport</span><strong>${esc(b.transport_name)}</strong></div>
 <div class="booking-row"><span>Hotel room</span><strong>${esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`)}</strong></div>
 <div class="booking-row"><span>Nights</span><strong>${b.nights}</strong></div>
@@ -294,7 +466,7 @@ async function admin() {
 <span class="fw-bold">${esc(b.customer_code)}</span><span>${esc(b.username)}</span><span class="text-secondary me-auto">${esc(b.package || b.division)}</span><span class="tag ${b.status}">${b.status}</span><strong>${tk(b.final_total)}</strong></button></h2>
 <div id="bk${b.id}" class="accordion-collapse collapse" data-bs-parent="#bk-acc"><div class="accordion-body"><div class="row g-4">
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Customer</h3>${kv('Username', esc(b.username))}${kv('Mobile', esc(b.mobile))}${kv('Email', esc(b.email))}${kv('Booked at', esc(b.created_at))}</div>
-<div class="col-md-6 col-xl-3"><h3 class="mt-0">Trip</h3>${kv('From', esc(b.start_district))}${kv('To', esc(b.division))}${kv('Package', esc(b.package))}${b.distance_km ? kv('Route distance (one way)', `${b.distance_km} km`) : ''}${kv('Travel date', esc(b.travel_date))}${b.departure_time ? kv('Transport departure time', esc(b.departure_time)) : ''}${kv('Seats booked', b.transport_persons)}</div>
+<div class="col-md-6 col-xl-3"><h3 class="mt-0">Trip</h3>${kv('From', esc(b.start_district))}${kv('To', esc(b.division))}${kv('Package', esc(b.package))}${b.distance_km ? kv('Route distance (one way)', `${b.distance_km} km`) : ''}${kv('Travel date', esc(b.travel_date))}${b.departure_time ? kv('Transport departure time', esc(b.departure_time)) : ''}${kv('Seats booked', b.seat_numbers?.length ? b.seat_numbers.join(', ') : b.transport_persons)}</div>
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Transport and stay</h3>${kv('Transport', esc(`${b.transport_name} ${b.transport_type}`))}${b.departure_time ? kv('Departure time', esc(b.departure_time)) : ''}${kv('Room', esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`))}${kv('Nights', b.nights)}${kv('Meals', b.meals.length ? b.meals.map(esc).join('<br>') : 'None')}</div>
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Money</h3>${kv('Transport', tk(b.transport_cost))}${kv('Hotel', tk(b.hotel_cost))}${kv('Meals', tk(b.meal_cost))}${b.discount ? kv('Discount', '-' + tk(b.discount)) : ''}${kv('Total', `<strong>${tk(b.final_total)}</strong>`)}
 ${kv('Demo payment', b.method ? esc(`${b.method}, ID ${b.transaction_id}`) : 'Not paid')}${kv('Demo advance', b.advance ? tk(b.advance) : '-')}${kv('Due later', b.remaining ? tk(b.remaining) : '-')}${b.status === 'cancelled' ? kv('Refund to give back', tk(b.refund_amount)) : ''}</div>
@@ -312,7 +484,12 @@ async function profile() {
     $('#app').innerHTML = `<section class="profile-auth"><div class="profile-auth-intro"><span class="section-kicker">YOUR TRAVEL ACCOUNT</span><h1>Log in to continue</h1><p class="mut">Access your profile, plan trips and manage your bookings.</p></div>${authPanel()}</section>`;
     return;
   }
-  const u = await api('/auth/profile');
+  const [u, list, preferences, catalogData] = await Promise.all([
+    api('/auth/profile'), api('/bookings/mine'), api('/bookings/preferences'), api('/catalog'),
+  ]);
+  cat = catalogData;
+  const foodBookingId = new URLSearchParams(location.hash.split('?')[1] || '').get('food');
+  const foodBooking = list.find(booking => String(booking.id) === foodBookingId && booking.status !== 'cancelled');
   $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">YOUR ACCOUNT</span><h1>Your profile</h1><p class="mut">View and update your personal details.</p></div><span class="profile-user">${esc(u.username)}</span></div><div class="grid">
 <form class="panel" data-act="profile"><h2>Details</h2><p class="mut">Username: ${esc(u.username)}</p>
 <label>Email (payment codes are sent here)<input name="email" type="email" value="${esc(u.email)}" required></label>
@@ -322,11 +499,42 @@ async function profile() {
 <button>Save details</button></form>
 <form class="panel" data-act="chpw"><h2>Change password</h2>
 <label>Old password${pwInput('old_password', 'required autocomplete="current-password"')}</label>
-${pwField('new_password', 'New password', 'new-password')}<button>Change password</button></form></div>`;
+${pwField('new_password', 'New password', 'new-password')}<button>Change password</button></form></div>
+<section class="profile-food panel"><span class="section-kicker">YOUR FOOD</span><h2>Default food preferences</h2>
+<p class="mut">We will preselect these dishes when a restaurant menu has a matching item. You can still choose a different meal for every traveller.</p>
+<form data-act="food-preferences" class="food-preferences-grid">${['breakfast', 'lunch', 'dinner', 'snacks'].map(type => {
+    const items = type === 'snacks' ? cat.snacks : cat.meals.filter(item => item.meal_type === type);
+    const names = [...new Set(items.map(item => item.name))];
+    return `<label>${type[0].toUpperCase() + type.slice(1)} preference<select name="${type}">
+<option value="">No default</option>${names.map(name => opt(name, name, preferences[type] === name)).join('')}</select></label>`;
+  }).join('')}<button>Save food preferences</button></form></section>
+<section class="profile-food panel"><span class="section-kicker">BOOKING MEALS</span><h2>Update food for a trip</h2>
+<p class="mut">Open any active booking to update restaurant orders, including while your trip is in progress. Your booking total and remaining due will be recalculated.</p>
+${list.filter(booking => booking.status !== 'cancelled').length
+    ? `<div class="profile-food-bookings">${list.filter(booking => booking.status !== 'cancelled').map(booking =>
+      `<a class="profile-food-booking" href="#/profile?food=${encodeURIComponent(booking.id)}"><strong>${esc(booking.package || booking.division)}</strong>
+<span>${esc(booking.travel_date)} · ${booking.status} · ${esc(booking.customer_code)}</span><b>Update food →</b></a>`).join('')}</div>`
+    : '<p class="mut">No active bookings yet.</p>'}
+${foodBooking ? `<div class="profile-food-editor"><h3>${esc(foodBooking.package || foodBooking.division)} · ${esc(foodBooking.customer_code)}</h3>
+<p class="mut">Current total: ${tk(foodBooking.final_total)}${foodBooking.remaining ? ` · Remaining due: ${tk(foodBooking.remaining)}` : ''}</p>
+<div id="profile-food-order"></div></div>` : ''}
+</section>`;
+  if (foodBooking) {
+    const { stops } = await api('/catalog/restaurants?package_id=' + encodeURIComponent(foodBooking.package_id));
+    mountFoodEditor($('#profile-food-order'), stops, {
+      days: foodBooking.nights, persons: foodBooking.transport_persons,
+      initialOrders: foodBooking.food_orders, preferences,
+      onSave: async orders => {
+        const result = await api(`/bookings/${foodBooking.id}/food`, 'PUT', { food_orders: orders });
+        toast(`Food order updated. New total: ${tk(result.booking.final_total)}${result.booking.remaining ? ` · Due: ${tk(result.booking.remaining)}` : ''}`);
+        await profile();
+      },
+    });
+  }
 }
 
 const ENT = {
-  transports: ['Transports', [['name', 'Name'], ['type', 'Type (AC or Non-AC)'], ['route', 'Route'], ['capacity', 'Seats', 'number']]],
+  transports: ['Transports', [['name', 'Name'], ['type', 'Type (AC or Non-AC)'], ['route', 'Route'], ['capacity', 'Seats', 'number'], ['cost_per_person', 'Base fare per seat', 'number']]],
   hotel_rooms: ['Hotel rooms', [['room_type', 'Room type'], ['price_per_night', 'Price a night', 'number'], ['capacity', 'Sleeps', 'number'], ['bed_count', 'Beds', 'number']]],
   meal_items: ['Meal items', [['meal_type', 'Meal', ['breakfast', 'lunch', 'dinner']], ['name', 'Item'], ['price', 'Price', 'number'], ['image_url', 'Photo URL or /images/ path', 'image']]],
   snack_items: ['Snacks', [['name', 'Item'], ['price', 'Price', 'number'], ['image_url', 'Photo URL or /images/ path', 'image']]],
@@ -347,7 +555,7 @@ const cell = ([n, l, t], v) => `<label>${l}${t === 'area' ? `<textarea name="${n
 async function catalog() {
   cat = await api('/catalog');
   const src = { transports: cat.transports, hotel_rooms: cat.rooms, meal_items: cat.meals, snack_items: cat.snacks, packages: cat.packages.map(p => ({ ...p, stops: p.stops.join('\n') })), route_distances: cat.routeDistances };
-  $('#app').innerHTML = '<h1>Catalog</h1><p class="mut">Changes show up for customers straight away. Transport costs ৳2 per seat per one-way km, plus a ৳20 per-seat AC fee. Enter the Google Maps one-way km for every source-district and package route you offer under Route distances; no routes are imported yet. Hotel room entries include bed count and nightly price.</p>' + Object.entries(ENT).map(([k, [title, fs]]) =>
+  $('#app').innerHTML = '<h1>Catalog</h1><p class="mut">Changes show up for customers straight away. Transport fares use the higher of route distance or base fare; AC transport has a 50% premium. Enter the one-way km for every source-district and package route under Route distances. Hotel room entries include bed count and nightly price.</p>' + Object.entries(ENT).map(([k, [title, fs]]) =>
     `<details class="panel item"${k === openEnt ? ' open' : ''}><summary><strong>${title}</strong> (${src[k].length})</summary>${[...src[k], {}].map(row =>
       `<form class="crow" data-act="save" data-ent="${k}" data-id="${row.id || ''}">${fs.map(f => cell(f, row[f[0]] ?? '')).join('')}<div><button>${row.id ? 'Save' : 'Add new'}</button>${row.id ? ` <button type="button" class="ghost" data-act="del" data-ent="${k}" data-id="${row.id}">Delete</button>` : ''}</div></form>`).join('')}</details>`).join('');
 }
@@ -363,6 +571,10 @@ document.addEventListener('submit', async e => {
 ${pwField('new_password', 'New password', 'new-password')}<button>Set new password</button></form>`;
     } else if (a === 'reset') { await api('/auth/reset', 'POST', d); toast('Password changed. Log in with the new one.'); location.hash = '#/';
     } else if (a === 'profile') { await api('/auth/profile', 'PATCH', d); toast('Details saved'); f.password.value = '';
+    } else if (a === 'food-preferences') {
+      await api('/bookings/preferences', 'PUT', d);
+      toast('Food preferences saved');
+      await profile();
     } else if (a === 'chpw') { await api('/auth/change-password', 'POST', d); toast('Password changed'); f.reset();
     } else if (a === 'save') {
       const id = f.dataset.id; await api('/admin/catalog/' + f.dataset.ent + (id ? '/' + id : ''), id ? 'PUT' : 'POST', d);
@@ -393,21 +605,6 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-go="meals"]')) { bootstrap.Tab.getOrCreateInstance($('#meal-tab')).show(); return; }
   const b = e.target.closest('[data-act]');
   try {
-    if (b?.dataset.act === 'copyday') {
-      const firstDay = [...document.querySelectorAll('.meal-choice[data-meal-day="0"]')];
-      for (const source of firstDay) {
-        document.querySelectorAll(`.meal-choice[data-meal-type="${source.dataset.mealType}"]`).forEach(target => {
-          target.value = source.value;
-        });
-        const sourcePeople = document.querySelector(`[data-meal-persons][data-meal-day="0"][data-meal-type="${source.dataset.mealType}"]`);
-        document.querySelectorAll(`[data-meal-persons][data-meal-type="${source.dataset.mealType}"]`).forEach(target => {
-          target.value = sourcePeople?.value || target.value;
-          target.disabled = !source.value;
-          target.required = !!source.value;
-        });
-      }
-      firstDay[0]?.dispatchEvent(new Event('input', { bubbles: true }));
-    }
     if (b?.dataset.act === 'otp') {
       const form = b.closest('form');
       if (!form.reportValidity()) return;
