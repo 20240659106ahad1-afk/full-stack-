@@ -218,31 +218,41 @@ INSERT OR IGNORE INTO hotel_rooms(room_type,price_per_night,capacity,bed_count) 
 INSERT OR IGNORE INTO hotel_rooms(room_type,price_per_night,capacity,bed_count) VALUES ('Presidential Suite',3800,5,3);
 
 -- Meals
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Paratha with Egg',30);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Luchi with Aloo Bhaji',50);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Khichuri with Egg',70);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Bhuna Khichuri with Beef',180);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Naan with Chicken Curry',150);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('breakfast','Toast Omelette with Tea',60);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Rice with Chicken Curry',220);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Rice with Beef Bhuna',280);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Rice with Hilsa Fish',350);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Kacchi Biryani',300);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Polao with Roast',270);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('lunch','Vegetable Platter with Dal',130);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Rice with Chicken Curry',220);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Beef Tehari',280);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Mutton Rezala with Naan',380);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Grilled Fish with Rice',340);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Fried Rice with Chicken',260);
-INSERT OR IGNORE INTO meal_items(meal_type,name,price) VALUES ('dinner','Khichuri with Beef',250);
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Paratha with Egg',30,'/images/pexels-paratha.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Luchi with Aloo Bhaji',50,'/images/pexels-halwa-puri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Khichuri with Egg',70,'/images/pexels-khichuri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Bhuna Khichuri with Beef',180,'/images/pexels-beef-khichuri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Naan with Chicken Curry',150,'/images/pexels-naan-curry.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Toast Omelette with Tea',60,'/images/pexels-omelette-toast.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Rice with Chicken Curry',220,'/images/pexels-chicken-curry-rice.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Rice with Beef Bhuna',280,'/images/pexels-beef-bhuna.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Rice with Hilsa Fish',350,'/images/pexels-hilsa-rice.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Kacchi Biryani',300,'/images/pexels-kacchi-biryani.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Polao with Roast',270,'/images/pexels-polao-roast.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Vegetable Platter with Dal',130,'/images/pexels-vegetable-dal.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Rice with Chicken Curry',220,'/images/pexels-chicken-curry-rice.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Beef Tehari',280,'/images/pexels-beef-khichuri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Mutton Rezala with Naan',380,'/images/pexels-mutton-rezala.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Grilled Fish with Rice',340,'/images/pexels-grilled-fish.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Fried Rice with Chicken',260,'/images/pexels-fried-rice.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Khichuri with Beef',250,'/images/pexels-beef-khichuri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Halwa Puri',90,'/images/pexels-halwa-puri.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('breakfast','Egg and Cheese Sandwich',120,'/images/pexels-egg-cheese-sandwich.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Morog Polao',280,'/images/pexels-morog-polao.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('lunch','Beef Kala Bhuna with Rice',320,'/images/pexels-kala-bhuna-rice.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Chicken Roast with Polao',300,'/images/pexels-chicken-roast-polao.jpg');
+INSERT OR IGNORE INTO meal_items(meal_type,name,price,image_url) VALUES ('dinner','Prawn Curry with Rice',360,'/images/pexels-prawn-curry.jpg');
 
 -- Snacks
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Samosa',30,'/images/meal-snacks.jpg');
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Singara',25,'/images/meal-snacks.jpg');
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Vegetable Chop',35,'/images/meal-snacks.jpg');
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Chicken Roll',80,'/images/meal-snacks.jpg');
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Fuchka',60,'/images/meal-snacks.jpg');
-INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Chotpoti',70,'/images/meal-snacks.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Samosa',30,'/images/pexels-samosa.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Singara',25,'/images/pexels-singara.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Vegetable Chop',35,'/images/pexels-vegetable-pakora.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Chicken Roll',80,'/images/pexels-chicken-roll.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Fuchka',60,'/images/pexels-fuchka.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Chotpoti',70,'/images/pexels-chotpoti.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Jilapi',40,'/images/pexels-jilapi.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Vegetable Pakora',50,'/images/pexels-vegetable-pakora.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Grilled Chicken Sandwich',140,'/images/pexels-grilled-chicken-sandwich.jpg');
+INSERT OR IGNORE INTO snack_items(name,price,image_url) VALUES ('Lemon Tea',30,'/images/pexels-lemon-tea.jpg');
 
 COMMIT;

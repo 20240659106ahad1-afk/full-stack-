@@ -253,20 +253,20 @@ if (!db.prepare('select 1 from schema_migrations where name = ?').get(extraFoodM
   db.transaction(() => {
     const addMeal = db.prepare('insert or ignore into meal_items(meal_type,name,price,image_url) values(?,?,?,?)');
     for (const [type, name, price, image] of [
-      ['breakfast', 'Halwa Puri', 90, '/images/meal-paratha.jpg'],
-      ['breakfast', 'Egg and Cheese Sandwich', 120, '/images/meal-breakfast.jpg'],
-      ['lunch', 'Morog Polao', 280, '/images/meal-polao.jpg'],
-      ['lunch', 'Beef Kala Bhuna with Rice', 320, '/images/meal-beef-bhuna.jpg'],
-      ['dinner', 'Chicken Roast with Polao', 300, '/images/meal-polao.jpg'],
-      ['dinner', 'Prawn Curry with Rice', 360, '/images/meal-hilsa.jpg'],
+      ['breakfast', 'Halwa Puri', 90, '/images/pexels-halwa-puri.jpg'],
+      ['breakfast', 'Egg and Cheese Sandwich', 120, '/images/pexels-egg-cheese-sandwich.jpg'],
+      ['lunch', 'Morog Polao', 280, '/images/pexels-morog-polao.jpg'],
+      ['lunch', 'Beef Kala Bhuna with Rice', 320, '/images/pexels-kala-bhuna-rice.jpg'],
+      ['dinner', 'Chicken Roast with Polao', 300, '/images/pexels-chicken-roast-polao.jpg'],
+      ['dinner', 'Prawn Curry with Rice', 360, '/images/pexels-prawn-curry.jpg'],
     ]) addMeal.run(type, name, price, image);
 
     const addSnack = db.prepare('insert or ignore into snack_items(name,price,image_url) values(?,?,?)');
     for (const [name, price, image] of [
-      ['Jilapi', 40, '/images/meal-snacks.jpg'],
-      ['Vegetable Pakora', 50, '/images/meal-pakora.jpg'],
-      ['Grilled Chicken Sandwich', 140, '/images/meal-chicken-roll.jpg'],
-      ['Lemon Tea', 30, '/images/meal-breakfast.jpg'],
+      ['Jilapi', 40, '/images/pexels-jilapi.jpg'],
+      ['Vegetable Pakora', 50, '/images/pexels-vegetable-pakora.jpg'],
+      ['Grilled Chicken Sandwich', 140, '/images/pexels-grilled-chicken-sandwich.jpg'],
+      ['Lemon Tea', 30, '/images/pexels-lemon-tea.jpg'],
     ]) addSnack.run(name, price, image);
 
     const updateExistingMealPhotos = db.prepare(`update restaurant_menu_items set image_url = (
@@ -302,6 +302,78 @@ if (!db.prepare('select 1 from schema_migrations where name = ?').get(extraFoodM
       }
     }
     db.prepare('insert into schema_migrations(name) values(?)').run(extraFoodMigration);
+  })();
+}
+const pexelsFoodPhotosMigration = 'pexels-food-photos-2026-11-18';
+if (!db.prepare('select 1 from schema_migrations where name = ?').get(pexelsFoodPhotosMigration)) {
+  db.transaction(() => {
+    const updateMeal = db.prepare('update meal_items set image_url = ? where meal_type = ? and name = ?');
+    const updateSnack = db.prepare('update snack_items set image_url = ? where name = ?');
+    const updateMenu = db.prepare('update restaurant_menu_items set image_url = ? where meal_type = ? and name = ?');
+    for (const [type, name, image] of [
+      ['breakfast', 'Halwa Puri', '/images/pexels-halwa-puri.jpg'],
+      ['breakfast', 'Egg and Cheese Sandwich', '/images/pexels-egg-cheese-sandwich.jpg'],
+      ['lunch', 'Morog Polao', '/images/pexels-morog-polao.jpg'],
+      ['lunch', 'Beef Kala Bhuna with Rice', '/images/pexels-kala-bhuna-rice.jpg'],
+      ['dinner', 'Chicken Roast with Polao', '/images/pexels-chicken-roast-polao.jpg'],
+      ['dinner', 'Prawn Curry with Rice', '/images/pexels-prawn-curry.jpg'],
+    ]) {
+      if (updateMeal.run(image, type, name).changes !== 1) throw new Error(`Could not set a Pexels photo for ${name}`);
+      updateMenu.run(image, type, name);
+    }
+    for (const [name, image] of [
+      ['Jilapi', '/images/pexels-jilapi.jpg'],
+      ['Vegetable Pakora', '/images/pexels-vegetable-pakora.jpg'],
+      ['Grilled Chicken Sandwich', '/images/pexels-grilled-chicken-sandwich.jpg'],
+      ['Lemon Tea', '/images/pexels-lemon-tea.jpg'],
+    ]) {
+      if (updateSnack.run(image, name).changes !== 1) throw new Error(`Could not set a Pexels photo for ${name}`);
+      updateMenu.run(image, 'snacks', name);
+    }
+    db.prepare('insert into schema_migrations(name) values(?)').run(pexelsFoodPhotosMigration);
+  })();
+}
+const existingFoodPhotosMigration = 'pexels-existing-food-photos-2026-11-18';
+if (!db.prepare('select 1 from schema_migrations where name = ?').get(existingFoodPhotosMigration)) {
+  db.transaction(() => {
+    const updateMeal = db.prepare('update meal_items set image_url = ? where meal_type = ? and name = ?');
+    const updateSnack = db.prepare('update snack_items set image_url = ? where name = ?');
+    const updateMenu = db.prepare('update restaurant_menu_items set image_url = ? where meal_type = ? and name = ?');
+    for (const [type, name, image] of [
+      ['breakfast', 'Paratha with Egg', '/images/pexels-paratha.jpg'],
+      ['breakfast', 'Luchi with Aloo Bhaji', '/images/pexels-halwa-puri.jpg'],
+      ['breakfast', 'Khichuri with Egg', '/images/pexels-khichuri.jpg'],
+      ['breakfast', 'Bhuna Khichuri with Beef', '/images/pexels-beef-khichuri.jpg'],
+      ['breakfast', 'Naan with Chicken Curry', '/images/pexels-naan-curry.jpg'],
+      ['breakfast', 'Toast Omelette with Tea', '/images/pexels-omelette-toast.jpg'],
+      ['lunch', 'Rice with Chicken Curry', '/images/pexels-chicken-curry-rice.jpg'],
+      ['lunch', 'Rice with Beef Bhuna', '/images/pexels-beef-bhuna.jpg'],
+      ['lunch', 'Rice with Hilsa Fish', '/images/pexels-hilsa-rice.jpg'],
+      ['lunch', 'Kacchi Biryani', '/images/pexels-kacchi-biryani.jpg'],
+      ['lunch', 'Polao with Roast', '/images/pexels-polao-roast.jpg'],
+      ['lunch', 'Vegetable Platter with Dal', '/images/pexels-vegetable-dal.jpg'],
+      ['dinner', 'Rice with Chicken Curry', '/images/pexels-chicken-curry-rice.jpg'],
+      ['dinner', 'Beef Tehari', '/images/pexels-beef-khichuri.jpg'],
+      ['dinner', 'Mutton Rezala with Naan', '/images/pexels-mutton-rezala.jpg'],
+      ['dinner', 'Grilled Fish with Rice', '/images/pexels-grilled-fish.jpg'],
+      ['dinner', 'Fried Rice with Chicken', '/images/pexels-fried-rice.jpg'],
+      ['dinner', 'Khichuri with Beef', '/images/pexels-beef-khichuri.jpg'],
+    ]) {
+      if (updateMeal.run(image, type, name).changes !== 1) throw new Error(`Could not set a Pexels photo for ${name}`);
+      updateMenu.run(image, type, name);
+    }
+    for (const [name, image] of [
+      ['Samosa', '/images/pexels-samosa.jpg'],
+      ['Singara', '/images/pexels-singara.jpg'],
+      ['Vegetable Chop', '/images/pexels-vegetable-pakora.jpg'],
+      ['Chicken Roll', '/images/pexels-chicken-roll.jpg'],
+      ['Fuchka', '/images/pexels-fuchka.jpg'],
+      ['Chotpoti', '/images/pexels-chotpoti.jpg'],
+    ]) {
+      if (updateSnack.run(image, name).changes !== 1) throw new Error(`Could not set a Pexels photo for ${name}`);
+      updateMenu.run(image, 'snacks', name);
+    }
+    db.prepare('insert into schema_migrations(name) values(?)').run(existingFoodPhotosMigration);
   })();
 }
 const priceMigration = 'catalog-prices-2026-10-24';
