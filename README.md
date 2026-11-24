@@ -43,6 +43,8 @@ A full-stack travel planning and booking application for exploring tour packages
 
 The database must be reachable over SSL. Supabase Free has usage and inactivity limits that can change; check its current plan details. Existing data in a local `travel.db` file is not automatically copied; export/import it separately if you need to preserve local accounts or bookings.
 
+The PostgreSQL schema enables Row Level Security on application tables without public policies. The app accesses data through its private server-side `DATABASE_URL`; never expose that URL in frontend code.
+
 ## Main API routes
 
 All API routes are prefixed with `/api`:
