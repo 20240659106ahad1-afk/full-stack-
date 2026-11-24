@@ -526,18 +526,29 @@ function forgot() {
   $('#app').innerHTML = `<h1>Reset your password</h1><form class="panel" data-act="forgot"><p class="mut">Enter the email registered to your account. Check your inbox and spam folder for the 6-digit code.</p><label>Email on your account<input name="email" type="email" required autocomplete="email"></label><button>Email me a code</button></form>`;
 }
 
-function profileAvatar(username) {
+function profileAvatar(username, gender) {
   const seed = Array.from(String(username)).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
   const id = `avatar-${seed}`;
+  const isFemale = gender === 'female';
   const backgrounds = ['#bde6f3', '#d6cdf8', '#f4d0b8', '#c4e7d4'];
   const skins = [['#f5d0ae', '#c9855b'], ['#e7b98e', '#9c5e3d'], ['#d6a177', '#78482f'], ['#f2c49b', '#b66d49']];
   const hairs = ['#30251f', '#3d302a', '#67412f', '#231f2b'];
   const shirts = ['#247c75', '#5146a8', '#bd5d48', '#27619a'];
-  const hairShapes = [
+  const maleHairShapes = [
     `<path d="M35 48c-4-25 10-38 27-38 19 0 29 15 24 38l-8-7-3-13c-10 8-23 11-36 10l-1 13z" fill="url(#${id}-hair)"/>`,
     `<path d="M33 51c-5-26 8-41 28-41 20 0 31 16 26 41l-8-6-4-16c-9 7-22 11-39 10l-1 12z" fill="url(#${id}-hair)"/><circle cx="40" cy="23" r="8" fill="#fff" opacity=".12"/><circle cx="76" cy="18" r="7" fill="#fff" opacity=".1"/>`,
     `<path d="M34 49c-2-26 11-39 29-39 18 0 28 14 24 39l-8-7-2-15c-10 9-22 12-39 11l-1 12z" fill="url(#${id}-hair)"/><path d="M53 13c-4 9-9 14-17 17" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="4" stroke-linecap="round"/>`,
   ];
+  const femaleHairShapes = [
+    `<path d="M35 47c-3-24 9-37 25-37 20 0 30 15 26 38l-8-7-3-12c-8 9-21 12-39 11l-1 12z" fill="url(#${id}-hair)"/><path d="M42 25c-2 18-3 31-2 44M78 24c3 17 4 31 2 45" fill="none" stroke="url(#${id}-hair)" stroke-width="7" stroke-linecap="round"/>`,
+    `<path d="M34 48c-4-25 10-38 27-38 19 0 29 15 25 38l-7-7-4-15c-8 10-21 14-39 13l-1 13z" fill="url(#${id}-hair)"/><path d="M40 23c-3 18-4 32-2 48M80 25c2 15 3 30 0 46" fill="none" stroke="url(#${id}-hair)" stroke-width="8" stroke-linecap="round"/><path d="M58 14c-3 9-8 15-15 19" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="3" stroke-linecap="round"/>`,
+    `<path d="M33 49c-3-27 10-40 28-40 19 0 31 15 26 41l-8-7-2-15c-10 9-22 12-40 11l-1 12z" fill="url(#${id}-hair)"/><path d="M40 25c-3 17-3 31 0 44M80 23c4 17 4 32 0 47" fill="none" stroke="url(#${id}-hair)" stroke-width="7" stroke-linecap="round"/>`,
+  ];
+  const neutralHairShapes = [
+    `<path d="M35 48c-4-25 10-38 27-38 19 0 29 15 24 38l-8-7-3-13c-10 8-23 11-36 10l-1 13z" fill="url(#${id}-hair)"/>`,
+  ];
+  const hairShapes = isFemale ? femaleHairShapes : gender === 'male' ? maleHairShapes : neutralHairShapes;
+  const backHair = isFemale ? `<path d="M35 49c-5-26 8-41 26-41 22 0 33 17 27 44l-3 39c-1 12-11 17-16 6l1-38H50l1 38c-6 12-16 6-17-6z" fill="url(#${id}-hair)"/>` : '';
   return `<svg class="profile-avatar" viewBox="0 0 120 120" role="img" aria-label="${esc(username)} profile avatar">
 <defs>
 <radialGradient id="${id}-bg" cx="30%" cy="20%" r="90%"><stop stop-color="${backgrounds[seed % backgrounds.length]}"/><stop offset="1" stop-color="#fff"/></radialGradient>
@@ -549,6 +560,7 @@ function profileAvatar(username) {
 <circle cx="60" cy="60" r="57" fill="url(#${id}-bg)"/>
 <ellipse cx="60" cy="108" rx="33" ry="7" fill="#293d4d" opacity=".17"/>
 <path d="M17 119c2-24 16-38 43-38s41 14 43 38z" fill="url(#${id}-shirt)" filter="url(#${id}-shadow)"/>
+${backHair}
 <path d="M48 75h24v19c-6 7-18 7-24 0z" fill="url(#${id}-skin)"/>
 <ellipse cx="38" cy="50" rx="7" ry="10" fill="url(#${id}-skin)"/>
 <ellipse cx="82" cy="50" rx="7" ry="10" fill="url(#${id}-skin)"/>
@@ -574,7 +586,7 @@ async function profile() {
   const foodBookingId = profileParams.get('food');
   const foodBooking = list.find(booking => String(booking.id) === foodBookingId && booking.status !== 'cancelled');
   const editableBookings = list.filter(booking => booking.status !== 'cancelled' && booking.travel_date >= today());
-  $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">YOUR ACCOUNT</span><h1>My profile</h1><p class="mut">View and update your personal details.</p></div><div class="profile-identity">${profileAvatar(u.username)}<span class="profile-user">${esc(u.username)}</span></div></div><div class="grid">
+  $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">YOUR ACCOUNT</span><h1>My profile</h1><p class="mut">View and update your personal details.</p></div><div class="profile-identity">${profileAvatar(u.username, u.gender)}<span class="profile-user">${esc(u.username)}</span></div></div><div class="grid">
 <form class="panel" data-act="profile"><h2>Details</h2><p class="mut">Username: ${esc(u.username)}</p>
 <label>Email (payment codes are sent here)<input name="email" type="email" value="${esc(u.email)}" required></label>
 <label>Mobile<input name="mobile" value="${esc(u.mobile)}" pattern="01[0-9]{9}" required></label>

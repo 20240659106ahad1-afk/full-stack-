@@ -11,7 +11,7 @@ A full-stack travel planning and booking application for exploring tour packages
 - Plan trips with morning, noon, evening, or night departures; choose individual seats and see booked seats marked unavailable
 - Compare transport fares, with higher AC and flight fares
 - Browse restaurants and menus at tour spots, select different meals for each traveller, and edit booked food orders and default preferences from Profile
-- Create an account, log in with username/email/mobile, reset passwords by registered email, and manage a profile
+- Create an account with a male/female avatar choice, log in with username/email/mobile, reset passwords by registered email, and manage a profile
 - Save bookings, confirm them using an email OTP, edit upcoming pending or confirmed trips from Profile, and cancel bookings
 - Recalculate prices after trip edits; show any overpayment as a manual refund due
 - Submit feedback

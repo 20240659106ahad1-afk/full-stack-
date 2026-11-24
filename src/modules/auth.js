@@ -14,16 +14,17 @@ r.get('/username-available', async (q, res) => {
 });
 
 r.post('/register', async (q, res) => {
-  const { username, age, mobile, password } = q.body, email = mail(q.body.email);
+  const { username, age, mobile, password, gender } = q.body, email = mail(q.body.email);
   if (!USER.test(username || '')) throw bad('Username must be 3-20 letters, numbers or underscore');
   if (!EMAIL.test(email)) throw bad('Enter a valid email. Payment codes are sent there');
   if (!MOBILE.test(mobile || '')) throw bad('Mobile must look like 01XXXXXXXXX');
+  if (!['male', 'female'].includes(gender)) throw bad('Choose male or female');
   const weak = pw.problem(password, username); if (weak) throw bad(weak);
   if (await db.prepare('select 1 from users where lower(username) = lower(?)').get(username)) throw bad('This username is already taken. Please choose another one', 409);
   if (await db.prepare('select 1 from users where lower(email) = lower(?) or mobile = ?').get(email, mobile)) throw dup();
   try {
-    const i = await db.prepare('insert into users(username,age,mobile,email,password_hash) values(?,?,?,?,?) returning id')
-      .run(username, +age || null, mobile, email, bcrypt.hashSync(password, 10));
+    const i = await db.prepare('insert into users(username,age,mobile,email,gender,password_hash) values(?,?,?,?,?,?) returning id')
+      .run(username, +age || null, mobile, email, gender, bcrypt.hashSync(password, 10));
     const u = { id: i.lastInsertRowid, username, role: 'customer' };
     setCookie(res, sign(u)); res.status(201).json(pub(u));
   } catch (error) {
@@ -54,7 +55,7 @@ r.post('/logout', (q, res) => res.clearCookie('token').json({ ok: true }));
 r.get('/me', auth, (q, res) => res.json(q.user));
 
 r.get('/profile', auth, async (q, res) =>
-  res.json(await db.prepare('select username, email, mobile, age from users where id = ?').get(q.user.id)));
+  res.json(await db.prepare('select username, email, mobile, age, gender from users where id = ?').get(q.user.id)));
 
 r.patch('/profile', auth, async (q, res) => {
   const email = mail(q.body.email), cur = await db.prepare('select * from users where id = ?').get(q.user.id);

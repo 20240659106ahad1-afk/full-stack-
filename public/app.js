@@ -74,6 +74,7 @@ function authPanel() {
 <form id="f-register" data-act="register" hidden><label>Username<input name="username" required minlength="3" maxlength="20" autocomplete="username" data-check="username"></label><div class="form-text" id="u-msg">3-20 letters, numbers or underscore. It must be unique.</div>
 <label>Email (payment codes are sent here)<input name="email" type="email" required autocomplete="email"></label>
 <label>Mobile<input name="mobile" required pattern="01[0-9]{9}" placeholder="01XXXXXXXXX"></label>
+<label>Gender<select name="gender" required><option value="" selected disabled>Choose male or female</option><option value="male">Male</option><option value="female">Female</option></select></label>
 <label>Age<input name="age" type="number" min="12" max="100"></label>
 ${pwField('password', 'Password', 'new-password')}
 <button>Create account</button></form></div>`;

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
     username      TEXT NOT NULL UNIQUE,
     age           INTEGER,
     mobile        TEXT NOT NULL UNIQUE,
+    gender        TEXT CHECK (gender IN ('male','female')),
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'customer' CHECK (role IN ('customer','moderator','admin'))
 );
