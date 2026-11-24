@@ -27,12 +27,16 @@ exports.issue = async (key, email, subject) => {
   catch (e) { console.error('Mail error:', e.message); await db.prepare('delete from otps where key = ?').run(key); throw bad(mailFailure(e)); }
 };
 
-exports.check = async (key, code) => {
+exports.verify = async (key, code) => {
   const o = await db.prepare('select * from otps where key = ?').get(key);
   if (!o || o.expires_at < Date.now()) throw bad('The code has expired. Ask for a new one');
   if (o.attempts >= 5) { await db.prepare('delete from otps where key = ?').run(key); throw bad('Too many wrong tries. Ask for a new code'); }
   if (hash(key, String(code || '')) !== o.code_hash) {
     await db.prepare('update otps set attempts = attempts + 1 where key = ?').run(key); throw bad('Wrong code');
   }
+};
+
+exports.check = async (key, code) => {
+  await exports.verify(key, code);
   await db.prepare('delete from otps where key = ?').run(key);
 };

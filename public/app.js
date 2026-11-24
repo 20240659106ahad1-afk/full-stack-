@@ -230,8 +230,7 @@ document.addEventListener('submit', async e => {
   try {
     if (a === 'login' || a === 'register') {
       me = await api('/auth/' + a, 'POST', d); toast('Welcome, ' + me.username);
-      if (location.hash === '#/profile') route();
-      else location.hash = '#/profile';
+      location.hash = '#/';
     } else if (a === 'book') {
       if (f.dataset.id) {
         const result = await api('/bookings/' + f.dataset.id, 'PUT', payload(f));

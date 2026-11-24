@@ -623,10 +623,14 @@ document.addEventListener('submit', async e => {
   try {
     if (a === 'forgot') {
       await api('/auth/forgot', 'POST', d); toast('If that email has an account, a code is on its way');
-      $('#app').innerHTML = `<h1>Enter the code</h1><form class="panel" data-act="reset"><input type="hidden" name="email" value="${esc(d.email)}">
-<label>6-digit code${otpInput('code')}</label>
-${pwField('new_password', 'New password', 'new-password')}<button>Set new password</button></form>`;
-    } else if (a === 'reset') { await api('/auth/reset', 'POST', d); toast('Password changed. Log in with the new one.'); location.hash = '#/';
+      $('#app').innerHTML = `<h1>Enter the code</h1><form class="panel" data-act="verify-reset-code"><input type="hidden" name="email" value="${esc(d.email)}">
+<label>6-digit code${otpInput('code')}</label><button>Verify code</button> <a href="#/forgot">Send another code</a></form>`;
+    } else if (a === 'verify-reset-code') {
+      await api('/auth/reset/verify', 'POST', d); toast('Code verified. Set a new password.');
+      $('#app').innerHTML = `<h1>Set a new password</h1><form class="panel" data-act="reset">
+<input type="hidden" name="email" value="${esc(d.email)}"><input type="hidden" name="code" value="${esc(d.code)}">
+${pwField('new_password', 'New password', 'new-password')}<button>Reset password</button></form>`;
+    } else if (a === 'reset') { await api('/auth/reset', 'POST', d); toast('Password reset. Log in with the new one.'); location.hash = '#/profile';
     } else if (a === 'profile') { await api('/auth/profile', 'PATCH', d); toast('Details saved'); f.password.value = '';
     } else if (a === 'food-preferences') {
       await api('/bookings/preferences', 'PUT', d);

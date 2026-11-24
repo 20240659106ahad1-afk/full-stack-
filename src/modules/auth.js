@@ -87,6 +87,13 @@ r.post('/forgot', async (q, res, next) => {
   }
 });
 
+r.post('/reset/verify', async (q, res) => {
+  const u = await db.prepare('select id from users where email = ?').get(mail(q.body.email));
+  if (!u) throw bad('Wrong code');
+  await otp.verify('reset:' + u.id, q.body.code);
+  res.json({ ok: true });
+});
+
 r.post('/reset', async (q, res) => {
   const u = await db.prepare('select id, username from users where email = ?').get(mail(q.body.email));
   if (!u) throw bad('Wrong code');
