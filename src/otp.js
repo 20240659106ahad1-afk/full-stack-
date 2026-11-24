@@ -13,20 +13,22 @@ const mailFailure = e => {
 };
 
 exports.issue = async (key, email, subject) => {
-  const old = db.prepare('select created_at from otps where key = ?').get(key);
+  const old = await db.prepare('select created_at from otps where key = ?').get(key);
   if (old && Date.now() - old.created_at < 60000) throw bad('Wait a minute before asking for a new code');
   const code = String(crypto.randomInt(100000, 1000000));
-  db.prepare('insert or replace into otps values (?,?,?,0,?)').run(key, hash(key, code), Date.now() + 5 * 60000, Date.now());
+  await db.prepare(`insert into otps(key,code_hash,expires_at,attempts,created_at) values(?,?,?,0,?)
+    on conflict(key) do update set code_hash=excluded.code_hash, expires_at=excluded.expires_at,
+      attempts=0, created_at=excluded.created_at`).run(key, hash(key, code), Date.now() + 5 * 60000, Date.now());
   try { await send(email, subject, `Your code is ${code}. It works for 5 minutes. If you did not ask for it, ignore this email.`); }
-  catch (e) { console.error('Mail error:', e.message); db.prepare('delete from otps where key = ?').run(key); throw bad(mailFailure(e)); }
+  catch (e) { console.error('Mail error:', e.message); await db.prepare('delete from otps where key = ?').run(key); throw bad(mailFailure(e)); }
 };
 
-exports.check = (key, code) => {
-  const o = db.prepare('select * from otps where key = ?').get(key);
+exports.check = async (key, code) => {
+  const o = await db.prepare('select * from otps where key = ?').get(key);
   if (!o || o.expires_at < Date.now()) throw bad('The code has expired. Ask for a new one');
-  if (o.attempts >= 5) { db.prepare('delete from otps where key = ?').run(key); throw bad('Too many wrong tries. Ask for a new code'); }
+  if (o.attempts >= 5) { await db.prepare('delete from otps where key = ?').run(key); throw bad('Too many wrong tries. Ask for a new code'); }
   if (hash(key, String(code || '')) !== o.code_hash) {
-    db.prepare('update otps set attempts = attempts + 1 where key = ?').run(key); throw bad('Wrong code');
+    await db.prepare('update otps set attempts = attempts + 1 where key = ?').run(key); throw bad('Wrong code');
   }
-  db.prepare('delete from otps where key = ?').run(key);
+  await db.prepare('delete from otps where key = ?').run(key);
 };

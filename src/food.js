@@ -4,7 +4,7 @@ const bad = message => Object.assign(new Error(message), { status: 400 });
 
 exports.TYPES = TYPES;
 
-exports.validateOrders = (packageId, persons, nights, orders) => {
+exports.validateOrders = async (packageId, persons, nights, orders) => {
   if (!Array.isArray(orders)) throw bad('Food orders must be a list');
   if (orders.length > Math.min(nights, 7) * TYPES.length * persons) throw bad('Too many food items selected');
   const getMenuItem = db.prepare(`select m.id, m.restaurant_id, m.meal_type, m.name, m.price,
@@ -13,7 +13,8 @@ exports.validateOrders = (packageId, persons, nights, orders) => {
     join package_stops s on s.id = r.package_stop_id
     where m.id = ? and r.id = ? and s.package_id = ?`);
   const seen = new Set();
-  return orders.map(order => {
+  const validated = [];
+  for (const order of orders) {
     const day = Number(order.day), person = Number(order.person_number), restaurantId = Number(order.restaurant_id);
     const itemId = Number(order.menu_item_id), quantity = Number(order.quantity ?? 1);
     const type = String(order.meal_type || '');
@@ -26,19 +27,20 @@ exports.validateOrders = (packageId, persons, nights, orders) => {
     const key = `${day}:${type}:${person}`;
     if (seen.has(key)) throw bad('Choose no more than one item per meal, traveller and day');
     seen.add(key);
-    const item = getMenuItem.get(itemId, restaurantId, packageId);
+    const item = await getMenuItem.get(itemId, restaurantId, packageId);
     if (!item || item.meal_type !== type) throw bad('One of the selected restaurant menu items is invalid');
-    return { day, person_number: person, restaurant_id: restaurantId, menu_item_id: item.id,
+    validated.push({ day, person_number: person, restaurant_id: restaurantId, menu_item_id: item.id,
       meal_type: type, quantity, name: item.name, price: item.price,
-      restaurant_name: item.restaurant_name, stop_name: item.stop_name };
-  });
+      restaurant_name: item.restaurant_name, stop_name: item.stop_name });
+  }
+  return validated;
 };
 
-exports.preferences = userId => Object.fromEntries(db.prepare(
+exports.preferences = async userId => Object.fromEntries((await db.prepare(
   'select meal_type, dish_name from user_food_preferences where user_id = ?'
-).all(userId).map(row => [row.meal_type, row.dish_name]));
+).all(userId)).map(row => [row.meal_type, row.dish_name]));
 
-exports.savePreferences = (userId, preferences) => {
+exports.savePreferences = async (userId, preferences) => {
   if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) {
     throw bad('Choose valid food preferences');
   }
@@ -46,16 +48,16 @@ exports.savePreferences = (userId, preferences) => {
     on conflict(user_id,meal_type) do update set dish_name=excluded.dish_name`);
   const remove = db.prepare('delete from user_food_preferences where user_id = ? and meal_type = ?');
   const exists = db.prepare('select 1 from restaurant_menu_items where meal_type = ? and name = ? limit 1');
-  db.transaction(() => {
+  await db.transaction(async () => {
     for (const type of TYPES) {
       const name = String(preferences[type] || '').trim();
       if (!name) {
-        remove.run(userId, type);
+        await remove.run(userId, type);
         continue;
       }
-      if (!exists.get(type, name)) throw bad(`That ${type} preference is not on a restaurant menu`);
-      upsert.run(userId, type, name);
+      if (!await exists.get(type, name)) throw bad(`That ${type} preference is not on a restaurant menu`);
+      await upsert.run(userId, type, name);
     }
   })();
-  return exports.preferences(userId);
+  return await exports.preferences(userId);
 };

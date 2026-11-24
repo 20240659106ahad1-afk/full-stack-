@@ -4,13 +4,17 @@ const SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 exports.sign = u => jwt.sign({ id: u.id }, SECRET, { expiresIn: '7d' });
 exports.setCookie = (res, token) => res.cookie('token', token, {
   httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 864e5 });
-exports.auth = (req, res, next) => {
+exports.auth = async (req, res, next) => {
+  let id;
   try {
-    const { id } = jwt.verify(req.cookies.token, SECRET);
-    const u = db.prepare('select id, username, role from users where id = ?').get(id);
-    if (!u) throw 0;
-    req.user = u; next();
-  } catch { res.status(401).json({ error: 'Please log in' }); }
+    ({ id } = jwt.verify(req.cookies.token, SECRET));
+  } catch {
+    return res.status(401).json({ error: 'Please log in' });
+  }
+  const u = await db.prepare('select id, username, role from users where id = ?').get(id);
+  if (!u) return res.status(401).json({ error: 'Please log in' });
+  req.user = u;
+  next();
 };
 exports.allow = (...roles) => (req, res, next) =>
   roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'You do not have access' });

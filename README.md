@@ -20,7 +20,7 @@ A full-stack travel planning and booking application for exploring tour packages
 
 - **Frontend:** HTML, CSS, vanilla JavaScript, Bootstrap 5
 - **Backend:** Node.js and Express 5 REST API
-- **Database:** SQLite using Node.js's built-in `node:sqlite`
+- **Database:** PostgreSQL (for example, Supabase), accessed with `pg`
 - **Authentication:** JWT in cookies; passwords hashed with bcryptjs
 - **Email:** Nodemailer with SMTP or the Brevo API. `MAIL_FROM` must be a verified sender; Brevo accepts either `sender@example.com` or `Travel Bangladesh <sender@example.com>`.
 
@@ -34,7 +34,15 @@ The original menu photos have also been replaced with locally served Pexels phot
 
 - Node.js 22 or newer
 - npm
+- A PostgreSQL database, such as a Supabase project
 
+### Configure the database
+
+1. Create a Supabase project and copy its PostgreSQL connection string from **Project Settings → Database → Connection string**. Use the session-pooler connection string if the direct connection is unavailable from Render.
+2. Set `DATABASE_URL` in your local `.env` file and in Render's environment variables. Keep the connection string private.
+3. Start the server with `npm start`. On first startup, the app creates the schema and loads the catalog seed data. User accounts and bookings are stored in PostgreSQL and survive Render restarts and redeploys.
+
+The database must be reachable over SSL. Supabase Free has usage and inactivity limits that can change; check its current plan details. Existing data in a local `travel.db` file is not automatically copied; export/import it separately if you need to preserve local accounts or bookings.
 
 ## Main API routes
 
