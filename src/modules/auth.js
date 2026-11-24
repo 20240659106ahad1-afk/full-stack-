@@ -6,7 +6,7 @@ const pub = u => ({ id: u.id, username: u.username, role: u.role });
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/, MOBILE = /^01\d{9}$/, USER = /^\w{3,20}$/;
 const notify = (email, how) => email && send(email, 'Your password was changed', `Your Travel Bangladesh password was changed ${how}. If this was not you, reset your password right away.`).catch(e => console.error('Mail error:', e.message));
 const mail = v => String(v || '').trim().toLowerCase();
-const dup = () => bad('This email or mobile number is already used by another account', 409);
+const dup = () => bad('This email or mobile already belongs to an account. Log in with its username, email or mobile, or reset the password using the account email.', 409);
 
 r.get('/username-available', async (q, res) => {
   const u = String(q.query.u || '');
@@ -20,16 +20,31 @@ r.post('/register', async (q, res) => {
   if (!MOBILE.test(mobile || '')) throw bad('Mobile must look like 01XXXXXXXXX');
   const weak = pw.problem(password, username); if (weak) throw bad(weak);
   if (await db.prepare('select 1 from users where lower(username) = lower(?)').get(username)) throw bad('This username is already taken. Please choose another one', 409);
+  if (await db.prepare('select 1 from users where lower(email) = lower(?) or mobile = ?').get(email, mobile)) throw dup();
   try {
     const i = await db.prepare('insert into users(username,age,mobile,email,password_hash) values(?,?,?,?,?) returning id')
       .run(username, +age || null, mobile, email, bcrypt.hashSync(password, 10));
     const u = { id: i.lastInsertRowid, username, role: 'customer' };
     setCookie(res, sign(u)); res.status(201).json(pub(u));
-  } catch { throw dup(); }
+  } catch (error) {
+    if (error.code === '23505') {
+      if (await db.prepare('select 1 from users where lower(username) = lower(?)').get(username)) {
+        throw bad('This username is already taken. Please choose another one', 409);
+      }
+      throw dup();
+    }
+    console.error('Account registration failed:', error);
+    throw Object.assign(new Error('Could not create your account right now. Please try again.'), { status: 500 });
+  }
 });
 
 r.post('/login', async (q, res) => {
-  const u = await db.prepare('select * from users where username = ?').get(q.body.username || '');
+  const identifier = String(q.body.username || '').trim();
+  const mobile = identifier.replace(/[\s-]/g, '');
+  const u = await db.prepare(`select * from users
+    where lower(username)=lower(?) or lower(email)=lower(?) or mobile=?
+    order by case when lower(username)=lower(?) then 0 when lower(email)=lower(?) then 1 else 2 end
+    limit 1`).get(identifier, identifier, mobile, identifier, identifier);
   if (!u || !bcrypt.compareSync(q.body.password || '', u.password_hash))
     return res.status(401).json({ error: 'Wrong username or password' });
   setCookie(res, sign(u)); res.json(pub(u));
@@ -64,9 +79,12 @@ r.post('/change-password', auth, async (q, res) => {
 r.post('/forgot', async (q, res, next) => {
   try {
     const email = mail(q.body.email), u = await db.prepare('select id from users where email = ?').get(email);
-    if (u) await otp.issue('reset:' + u.id, email, 'Your password reset code').catch(e => console.error(e.message));
+    if (u) await otp.issue('reset:' + u.id, email, 'Your password reset code');
     res.json({ ok: true });
-  } catch (e) { next(e); }
+  } catch (e) {
+    console.error('Password reset code request failed:', e.code || e.message);
+    next(e);
+  }
 });
 
 r.post('/reset', async (q, res) => {

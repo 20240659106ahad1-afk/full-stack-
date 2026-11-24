@@ -523,7 +523,7 @@ ${users.map(u => `<tr><td>${esc(u.username)}</td><td>${esc(u.email)}</td><td>${e
 }
 
 function forgot() {
-  $('#app').innerHTML = `<h1>Reset your password</h1><form class="panel" data-act="forgot"><label>Email on your account<input name="email" type="email" required></label><button>Email me a code</button></form>`;
+  $('#app').innerHTML = `<h1>Reset your password</h1><form class="panel" data-act="forgot"><p class="mut">Enter the email registered to your account. Check your inbox and spam folder for the 6-digit code.</p><label>Email on your account<input name="email" type="email" required autocomplete="email"></label><button>Email me a code</button></form>`;
 }
 
 async function profile() {

@@ -68,7 +68,7 @@ function nav() {
 
 function authPanel() {
   return `<div class="hero-card account-card"><div class="tabs"><button type="button" class="on" data-tab="login">Log in</button><button type="button" data-tab="register">Create account</button></div>
-<form id="f-login" data-act="login"><label>Username<input name="username" required autocomplete="username"></label>
+<form id="f-login" data-act="login"><label>Username, email or mobile<input name="username" required autocomplete="username" placeholder="Username / email / 01XXXXXXXXX"></label>
 <label>Password${pwInput('password', 'required autocomplete="current-password"')}</label>
 <button>Log in</button> <a href="#/forgot">Forgot password?</a></form>
 <form id="f-register" data-act="register" hidden><label>Username<input name="username" required minlength="3" maxlength="20" autocomplete="username" data-check="username"></label><div class="form-text" id="u-msg">3-20 letters, numbers or underscore. It must be unique.</div>

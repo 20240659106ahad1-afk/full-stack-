@@ -2,6 +2,10 @@ const crypto = require('crypto'), db = require('./db'), { send } = require('./ma
 const bad = m => Object.assign(new Error(m), { status: 400 });
 const hash = (k, c) => crypto.createHash('sha256').update(`${k}:${c}:${process.env.JWT_SECRET || 'dev'}`).digest('hex');
 const mailFailure = e => {
+  if (/Email is not configured/.test(e.message || ''))
+    return 'Password reset email is not configured. Ask the administrator to set BREVO_API_KEY and MAIL_FROM in Render.';
+  if (/MAIL_FROM must be a verified email address/.test(e.message || ''))
+    return 'The email sender is missing or unverified. Ask the administrator to check MAIL_FROM in Render.';
   if (process.env.NODE_ENV === 'production') return 'Could not send the email. Please try again later';
   if (e.code === 'EAUTH' || e.responseCode === 535)
     return 'Email login was rejected. Check SMTP_USER and make sure SMTP_PASS is your Brevo SMTP key, not an API key.';

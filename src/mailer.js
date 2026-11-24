@@ -31,5 +31,8 @@ exports.send = async (to, subject, text) => {
     return;
   }
   if (smtp) return void await smtp.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, text });
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Email is not configured. Set BREVO_API_KEY and MAIL_FROM, or configure SMTP.');
+  }
   console.log(`\n[DEV EMAIL] To: ${to}\nSubject: ${subject}\n${text}\n`);
 };

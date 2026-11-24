@@ -11,7 +11,7 @@ A full-stack travel planning and booking application for exploring tour packages
 - Plan trips with morning, noon, evening, or night departures; choose individual seats and see booked seats marked unavailable
 - Compare transport fares, with higher AC and flight fares
 - Browse restaurants and menus at tour spots, select different meals for each traveller, and edit booked food orders and default preferences from Profile
-- Create an account, sign in, and manage a profile
+- Create an account, log in with username/email/mobile, reset passwords by registered email, and manage a profile
 - Save bookings, confirm them using an email OTP, edit upcoming pending or confirmed trips from Profile, and cancel bookings
 - Recalculate prices after trip edits; show any overpayment as a manual refund due
 - Submit feedback
@@ -24,6 +24,8 @@ A full-stack travel planning and booking application for exploring tour packages
 - **Database:** PostgreSQL (for example, Supabase), accessed with `pg`
 - **Authentication:** JWT in cookies; passwords hashed with bcryptjs
 - **Email:** Nodemailer with SMTP or the Brevo API. `MAIL_FROM` must be a verified sender; Brevo accepts either `sender@example.com` or `Travel Bangladesh <sender@example.com>`.
+
+For password-reset and payment codes on Render, configure `BREVO_API_KEY` and `MAIL_FROM` in the service's Environment settings. Do not share the API key.
 
 
 
