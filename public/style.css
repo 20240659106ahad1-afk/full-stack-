@@ -176,6 +176,8 @@ button.ghost,.cta.ghost{background:transparent;color:var(--ink);border:1px solid
 .profile-heading{display:flex;align-items:center;justify-content:space-between;gap:18px}
 .profile-heading h1{margin:5px 0}
 .profile-heading p{margin:0}
+.profile-identity{display:flex;align-items:center;gap:12px}
+.profile-avatar{display:block;width:78px;height:78px;filter:drop-shadow(0 6px 9px rgba(34,54,76,.18))}
 .profile-user{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--btn1);font-weight:700}
 @media(max-width:800px){.tour-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.account-access{grid-template-columns:1fr}.account-access .hero-card{max-width:500px;width:100%}}
 @media(max-width:560px){.hero{min-height:390px;padding:56px 6vw 32px}.hero-copy>h1{font-size:clamp(2.5rem,12vw,3.5rem)}.hero-copy>p{font-size:1rem}.hero-stats{gap:10px 14px;font-size:.78rem}.hero-stats i{display:none}.tour-grid,.meal-grid{grid-template-columns:1fr}.tour-card>img{height:210px}.section-heading{align-items:flex-start;flex-direction:column;gap:8px}.home-section{padding-top:26px}}
@@ -260,7 +262,7 @@ header{padding-top:9px;padding-bottom:9px}
 footer{margin-top:34px;border-top:1px solid var(--line);background:rgba(255,255,255,.55)}
 @media(max-width:700px){header{align-items:flex-start}#nav{justify-content:flex-end;flex:1}#nav a{padding:7px 8px;font-size:.88rem}.hero{min-height:390px;padding:58px 6vw 72px}.hero-copy>h1{font-size:clamp(2.7rem,12vw,4rem)}.hero-stats{border-radius:16px}}
 @media(max-width:460px){header{align-items:center}.brand{font-size:1rem}.brand-car{flex-basis:36px;width:36px}#nav{flex-basis:100%;justify-content:flex-start}#nav a{font-size:.82rem;padding:6px 7px}.hero-actions{gap:9px}.hero-button{padding:9px 13px}.hero-stats{justify-content:flex-start}}
-@media(max-width:700px){.profile-auth{grid-template-columns:1fr;gap:8px;margin:16px auto}.profile-auth-intro{padding:0}.profile-heading{align-items:flex-start}}
+@media(max-width:700px){.profile-auth{grid-template-columns:1fr;gap:8px;margin:16px auto}.profile-auth-intro{padding:0}.profile-heading{align-items:flex-start}.profile-identity{gap:8px}.profile-avatar{width:62px;height:62px}}
 fieldset{border:1px solid var(--line);border-radius:10px}
 .scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;margin-bottom:26px;background:var(--card);border-radius:12px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--mut);font-size:.85rem}
