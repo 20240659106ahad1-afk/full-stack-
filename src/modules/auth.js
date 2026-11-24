@@ -60,9 +60,10 @@ r.get('/profile', auth, async (q, res) =>
 r.patch('/profile', auth, async (q, res) => {
   const email = mail(q.body.email), cur = await db.prepare('select * from users where id = ?').get(q.user.id);
   if (!EMAIL.test(email) || !MOBILE.test(q.body.mobile || '')) throw bad('Enter a valid email and a mobile like 01XXXXXXXXX');
+  if (!['male', 'female'].includes(q.body.gender)) throw bad('Choose male or female');
   if (email !== cur.email && !bcrypt.compareSync(q.body.password || '', cur.password_hash))
     throw bad('Enter your current password to change your email');
-  try { await db.prepare('update users set email=?, mobile=?, age=? where id=?').run(email, q.body.mobile, +q.body.age || null, cur.id); }
+  try { await db.prepare('update users set email=?, mobile=?, age=?, gender=? where id=?').run(email, q.body.mobile, +q.body.age || null, q.body.gender, cur.id); }
   catch { throw dup(); }
   res.json({ ok: true });
 });

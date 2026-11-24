@@ -575,7 +575,7 @@ ${hairShapes[seed % hairShapes.length]}
 
 async function profile() {
   if (!me) {
-    $('#app').innerHTML = `<section class="profile-auth"><div class="profile-auth-intro"><span class="section-kicker">YOUR TRAVEL ACCOUNT</span><h1>Log in to continue</h1><p class="mut">Access your profile, plan trips and manage your bookings.</p></div>${authPanel()}</section>`;
+    $('#app').innerHTML = `<section class="profile-auth"><div class="profile-auth-intro"><span class="section-kicker">MY ACCOUNT</span><h1>Log in to continue</h1><p class="mut">Access your profile, plan trips and manage your bookings.</p></div>${authPanel()}</section>`;
     return;
   }
   const [u, list, preferences, catalogData] = await Promise.all([
@@ -586,10 +586,11 @@ async function profile() {
   const foodBookingId = profileParams.get('food');
   const foodBooking = list.find(booking => String(booking.id) === foodBookingId && booking.status !== 'cancelled');
   const editableBookings = list.filter(booking => booking.status !== 'cancelled' && booking.travel_date >= today());
-  $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">YOUR ACCOUNT</span><h1>My profile</h1><p class="mut">View and update your personal details.</p></div><div class="profile-identity">${profileAvatar(u.username, u.gender)}<span class="profile-user">${esc(u.username)}</span></div></div><div class="grid">
+  $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">MY ACCOUNT</span><h1>My profile</h1><p class="mut">View and update your personal details.</p></div><div class="profile-identity">${profileAvatar(u.username, u.gender)}<span class="profile-user">${esc(u.username)}</span></div></div><div class="grid">
 <form class="panel" data-act="profile"><h2>Details</h2><p class="mut">Username: ${esc(u.username)}</p>
 <label>Email (payment codes are sent here)<input name="email" type="email" value="${esc(u.email)}" required></label>
 <label>Mobile<input name="mobile" value="${esc(u.mobile)}" pattern="01[0-9]{9}" required></label>
+<label>Gender<select name="gender" required><option value="" disabled${u.gender ? '' : ' selected'}>Choose male or female</option><option value="male"${u.gender === 'male' ? ' selected' : ''}>Male</option><option value="female"${u.gender === 'female' ? ' selected' : ''}>Female</option></select></label>
 <label>Age<input name="age" type="number" min="12" max="100" value="${esc(u.age)}"></label>
 <label>Current password (only needed if you change your email)${pwInput('password', 'autocomplete="current-password"')}</label>
 <button>Save details</button></form>
@@ -678,7 +679,7 @@ document.addEventListener('submit', async e => {
 <input type="hidden" name="email" value="${esc(d.email)}"><input type="hidden" name="code" value="${esc(d.code)}">
 ${pwField('new_password', 'New password', 'new-password')}<button>Reset password</button></form>`;
     } else if (a === 'reset') { await api('/auth/reset', 'POST', d); toast('Password reset. Log in with the new one.'); location.hash = '#/profile';
-    } else if (a === 'profile') { await api('/auth/profile', 'PATCH', d); toast('Details saved'); f.password.value = '';
+    } else if (a === 'profile') { await api('/auth/profile', 'PATCH', d); toast('Details saved'); await profile();
     } else if (a === 'food-preferences') {
       await api('/bookings/preferences', 'PUT', d);
       toast('Food preferences saved');
