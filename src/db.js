@@ -20,7 +20,7 @@ function placeholders(sql) {
 
 async function query(sql, params = []) {
   const client = transactionStorage.getStore() || pool;
-  return client.query(params.length ? placeholders(sql) : sql, params);
+  return params.length ? client.query(placeholders(sql), params) : client.query(sql);
 }
 
 const db = {
@@ -40,6 +40,7 @@ const db = {
   },
   lock: key => query('select pg_advisory_xact_lock(hashtext(?))', [key]),
   exec: sql => query(sql),
+  execBatch: sql => query(sql),
   execScript: async sql => {
     let result;
     for (const statement of sql.split(';').map(part => part.trim()).filter(Boolean)) {
@@ -128,27 +129,6 @@ async function seedRoutes() {
 }
 
 async function seedFood() {
-  const extras = [
-    ['breakfast', 'Halwa Puri', 90, '/images/pexels-halwa-puri.jpg'],
-    ['breakfast', 'Egg and Cheese Sandwich', 120, '/images/pexels-egg-cheese-sandwich.jpg'],
-    ['lunch', 'Morog Polao', 280, '/images/pexels-morog-polao.jpg'],
-    ['lunch', 'Beef Kala Bhuna with Rice', 320, '/images/pexels-kala-bhuna-rice.jpg'],
-    ['dinner', 'Chicken Roast with Polao', 300, '/images/pexels-chicken-roast-polao.jpg'],
-    ['dinner', 'Prawn Curry with Rice', 360, '/images/pexels-prawn-curry.jpg'],
-  ];
-  for (const [type, name, price, image] of extras) {
-    await db.prepare(`insert into meal_items(meal_type,name,price,image_url) values(?,?,?,?)
-      on conflict(meal_type,name) do nothing`).run(type, name, price, image);
-  }
-  const snacks = [
-    ['Pizza', 180], ['Singara', 25], ['Vegetable Chop', 35], ['Chicken Roll', 80],
-    ['Fuchka', 60], ['Chotpoti', 70], ['Jilapi', 40], ['Vegetable Pakora', 50],
-    ['Grilled Chicken Sandwich', 140], ['Lemon Tea', 30],
-  ];
-  for (const [name, price] of snacks) {
-    await db.prepare('insert into snack_items(name,price,image_url) values(?,?,?) on conflict(name) do nothing')
-      .run(name, price, '/images/pexels-pizza.jpg');
-  }
   const defaultPhotos = {
     breakfast: '/images/pexels-omelette-toast.jpg',
     lunch: '/images/pexels-chicken-curry-rice.jpg',
@@ -162,31 +142,27 @@ async function seedFood() {
     union all
     select id, stop_name || ' Family Restaurant', 'A comfortable stop for family meals and snacks' from package_stops
     on conflict(package_stop_id,name) do nothing`).run();
-  const [stops, restaurants, meals, snackItems] = await Promise.all([
-    db.prepare('select id, stop_name from package_stops order by id').all(),
-    db.prepare('select id, package_stop_id, name from restaurants order by id').all(),
-    db.prepare('select meal_type,name,price,image_url from meal_items order by meal_type,id').all(),
-    db.prepare('select name,price,image_url from snack_items order by id').all(),
-  ]);
-  const stopIndex = new Map(stops.map((stop, index) => [stop.id, index]));
-  for (const restaurant of restaurants) {
-    const index = stopIndex.get(restaurant.package_stop_id);
-    for (const type of ['breakfast', 'lunch', 'dinner', 'snacks']) {
-      const categoryItems = type === 'snacks' ? snackItems : meals.filter(item => item.meal_type === type);
-      const selectedItems = restaurant.name.endsWith(' Family Restaurant') && categoryItems.length > 1
-        ? categoryItems.filter((_, itemIndex) => itemIndex % 2 === index % 2)
-        : categoryItems;
-      if (!selectedItems.length) continue;
-      const params = [];
-      const values = selectedItems.map(item => {
-        const offset = params.length;
-        params.push(restaurant.id, type, item.name, item.price, item.image_url);
-        return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5})`;
-      });
-      await query(`insert into restaurant_menu_items(restaurant_id,meal_type,name,price,image_url)
-        values ${values.join(',')} on conflict(restaurant_id,meal_type,name) do nothing`, params);
-    }
-  }
+  await db.exec(`WITH ordered_stops AS (
+      SELECT id, row_number() OVER (ORDER BY id) - 1 AS stop_index FROM package_stops
+    ), catalog_items AS (
+      SELECT meal_type, name, price, image_url, id FROM meal_items
+      UNION ALL
+      SELECT 'snacks' AS meal_type, name, price, image_url, id FROM snack_items
+    ), ordered_items AS (
+      SELECT meal_type, name, price, image_url,
+        row_number() OVER (PARTITION BY meal_type ORDER BY id) - 1 AS item_index,
+        count(*) OVER (PARTITION BY meal_type) AS item_count
+      FROM catalog_items
+    )
+    INSERT INTO restaurant_menu_items(restaurant_id,meal_type,name,price,image_url)
+    SELECT r.id, i.meal_type, i.name, i.price, i.image_url
+    FROM restaurants r
+    JOIN ordered_stops s ON s.id = r.package_stop_id
+    CROSS JOIN ordered_items i
+    WHERE r.name NOT LIKE '% Family Restaurant'
+      OR i.item_count = 1
+      OR i.item_index % 2 = s.stop_index % 2
+    ON CONFLICT(restaurant_id,meal_type,name) DO NOTHING`);
 }
 
 let initialization;
@@ -216,12 +192,14 @@ db.initialize = () => {
         .replace(/^\s*PRAGMA[^;]*;\s*/gim, '')
         .replace(/^\s*(BEGIN|COMMIT)\s*;\s*$/gim, '');
       await db.transaction(async () => {
+        const statements = [];
         for (const statement of seed.split(';').map(part => part.trim()).filter(Boolean)) {
           const sql = statement.replace(/^((?:--[^\n]*\n|\s)*)INSERT\s+OR\s+IGNORE\s+INTO/i, '$1INSERT INTO');
-          await db.exec(/^\s*(?:--[^\n]*\n|\s)*INSERT\s+OR\s+IGNORE\s+INTO/i.test(statement)
+          statements.push(/^\s*(?:--[^\n]*\n|\s)*INSERT\s+OR\s+IGNORE\s+INTO/i.test(statement)
             ? `${sql} ON CONFLICT DO NOTHING`
             : sql);
         }
+        await db.execBatch(statements.join(';\n'));
         await seedRoutes();
         await seedFood();
         await db.prepare('insert into schema_migrations(name) values(?)').run(seedMarker);
