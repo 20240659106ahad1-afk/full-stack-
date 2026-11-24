@@ -550,6 +550,7 @@ footer{border-top-color:var(--line);background:rgba(255,255,255,.74)}
 .profile-food-booking{display:grid;grid-template-columns:1fr auto;gap:3px 14px;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--card);text-decoration:none}
 .profile-food-booking>span{color:var(--mut);font-size:.9rem}
 .profile-food-booking>b{grid-column:2;grid-row:1/3;align-self:center}
+.plan-step-actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
 .profile-food-editor{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .food-day{margin:16px 0;padding:16px}
 .food-day h3{margin:0 0 12px}

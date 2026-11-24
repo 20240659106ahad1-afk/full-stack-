@@ -1,6 +1,6 @@
 const r = require('express').Router(), db = require('../db'), otp = require('../otp'), { send } = require('../mailer'), { auth } = require('../middleware/auth');
 const { BOOKINGS, withMeals } = require('../queries');
-const { okDate, left } = require('../seats');
+const { okDate, left, booked } = require('../seats');
 const { randomBytes, createHmac } = require('node:crypto');
 const bad = m => Object.assign(new Error(m), { status: 400 });
 const paymentDetails = body => {
@@ -38,19 +38,27 @@ r.post('/:id/otp', auth, async (q, res, next) => {
 // Demo only: no real payment is processed or verified.
 r.post('/:id', auth, async (q, res) => {
   const { method, account } = paymentDetails(q.body), { otp: code } = q.body, b = await pending(q);
-  if (!okDate(b.travel_date)) throw bad('This booking has no valid travel date. Please cancel it and book again');
-  const t = await db.prepare('select * from transports where id = ?').get(b.transport_id);
-  if (b.transport_persons > await left(t, b.travel_date, b.departure_time, b.id)) throw bad('Those seats were taken by someone else. Please cancel and book again');
   await otp.check(paymentOtpKey(b.id, method, account), code);
   const transaction_id = 'TEST-' + randomBytes(10).toString('hex').toUpperCase();
-  const advance = Math.round(b.final_total * 50) / 100, remaining = b.final_total - advance;
-  await db.transaction(async () => {
-    const stillPending = await db.prepare("select id from bookings where id=? and user_id=? and status='pending' for update")
+  const { advance, remaining } = await db.transaction(async () => {
+    const stillPending = await db.prepare("select * from bookings where id=? and user_id=? and status='pending' for update")
       .get(b.id, q.user.id);
     if (!stillPending) throw bad('Booking not found or already paid');
+    if (!okDate(stillPending.travel_date)) throw bad('This booking has no valid travel date. Please cancel it and book again');
+    const transport = await db.prepare('select * from transports where id=?').get(stillPending.transport_id);
+    await db.lock(`${stillPending.transport_id}:${stillPending.travel_date}:${stillPending.departure_time || ''}`);
+    const selected = await db.prepare('select seat_number from booking_seats where booking_id=?').all(stillPending.id);
+    const occupied = new Set(await booked(transport, stillPending.travel_date, stillPending.departure_time, stillPending.id));
+    if (stillPending.transport_persons > await left(transport, stillPending.travel_date, stillPending.departure_time, stillPending.id)
+      || selected.some(seat => occupied.has(seat.seat_number))) {
+      throw bad('Those seats were taken by someone else. Please edit your booking or choose another date');
+    }
+    const advance = Math.round(stillPending.final_total * 50) / 100;
+    const remaining = stillPending.final_total - advance;
     await db.prepare('insert into payments(booking_id,method,transaction_id,advance,remaining) values(?,?,?,?,?)')
-      .run(b.id, method, transaction_id, advance, remaining);
-    await db.prepare("update bookings set status='confirmed' where id=?").run(b.id);
+      .run(stillPending.id, method, transaction_id, advance, remaining);
+    await db.prepare("update bookings set status='confirmed' where id=?").run(stillPending.id);
+    return { advance, remaining };
   })();
   const confirmed = (await withMeals(await db.prepare(BOOKINGS + ' where b.id = ?').all(b.id)))[0];
   let email_sent = false;

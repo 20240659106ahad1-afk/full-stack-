@@ -1,11 +1,11 @@
 const r = require('express').Router(), db = require('../db'), crypto = require('crypto');
-const { send } = require('../mailer'), { auth } = require('../middleware/auth'), { BOOKINGS, withMeals } = require('../queries'), { okDate, left, booked } = require('../seats');
+const { send } = require('../mailer'), { auth } = require('../middleware/auth'), { BOOKINGS, withMeals } = require('../queries'), { today, okDate, left, booked } = require('../seats');
 const departures = require('../departures');
 const food = require('../food');
 const bad = m => Object.assign(new Error(m), { status: 400 });
 
 // Prices and seat counts are worked out here on the server, never trusted from the browser.
-async function price(b) {
+async function price(b, exceptBookingId = 0) {
   const persons = +b.persons, nights = +b.nights, date = b.travel_date || null;
   if (!Number.isInteger(persons) || !Number.isInteger(nights) || persons < 1 || nights < 1) throw bad('Travellers and nights must be whole numbers, at least 1');
   if (date && !okDate(date)) throw bad('Choose a travel date from today onward');
@@ -27,7 +27,7 @@ async function price(b) {
   const transportType = String(t.type).trim().toLowerCase();
   if (!['ac', 'non-ac'].includes(transportType)) throw bad('This transport must be marked AC or Non-AC in the catalog');
   const departureTime = departures.isAvailable(b.departure_time) ? b.departure_time : null;
-  const seats = date ? await left(t, date, departureTime) : t.capacity;
+  const seats = date ? await left(t, date, departureTime, exceptBookingId) : t.capacity;
   if (persons > seats) throw bad(seats ? `Only ${seats} seats are left on this vehicle for that date` : 'This vehicle is full on that date. Pick another date or vehicle');
   const fareBasePerPerson = Math.max(route.distance_km, t.cost_per_person);
   const acSurchargePerSeat = transportType === 'ac' ? Math.ceil(fareBasePerPerson * 0.5) : 0;
@@ -97,17 +97,25 @@ async function price(b) {
   };
 }
 
-r.post('/quote', async (q, res) => res.json(await price(q.body)));
+r.post('/quote', auth, async (q, res) => {
+  const bookingId = Number(q.body.booking_id) || 0;
+  if (bookingId && !await db.prepare("select id from bookings where id=? and user_id=? and status!='cancelled'")
+    .get(bookingId, q.user.id)) throw bad('Booking not found');
+  res.json(await price(q.body, bookingId));
+});
 
-r.get('/availability', async (q, res) => {
+r.get('/availability', auth, async (q, res) => {
   if (!okDate(q.query.date)) throw bad('Choose a travel date from today onward');
   const departureTime = q.query.departure_time || null;
   if (departureTime && !departures.isAvailable(departureTime)) throw bad('Choose a departure time from the available schedule');
+  const bookingId = Number(q.query.booking_id) || 0;
+  if (bookingId && !await db.prepare("select id from bookings where id=? and user_id=? and status!='cancelled'")
+    .get(bookingId, q.user.id)) throw bad('Booking not found');
   const transports = await db.prepare('select * from transports').all();
   res.json(await Promise.all(transports.map(async t => ({
     id: t.id, capacity: t.capacity,
-    left: await left(t, q.query.date, departureTime),
-    booked_seats: departureTime ? await booked(t, q.query.date, departureTime) : [],
+    left: await left(t, q.query.date, departureTime, bookingId),
+    booked_seats: departureTime ? await booked(t, q.query.date, departureTime, bookingId) : [],
   }))));
 });
 
@@ -160,6 +168,95 @@ r.post('/', auth, async (q, res) => {
   }
 });
 
+r.put('/:id', auth, async (q, res) => {
+  const bookingId = Number(q.params.id), b = q.body;
+  if (!Number.isInteger(bookingId) || bookingId < 1) throw bad('Booking not found');
+  if (!okDate(b.travel_date) || b.travel_date <= today()) throw bad('Choose a future travel date to edit this booking');
+  if (typeof b.departure_time !== 'string' || !departures.isAvailable(b.departure_time)) {
+    throw bad('Choose a departure time from the available schedule');
+  }
+  const seatNumbers = b.seat_numbers;
+  try {
+    await db.transaction(async () => {
+      const current = await db.prepare('select * from bookings where id=? and user_id=? for update')
+        .get(bookingId, q.user.id);
+      if (!current || !['pending', 'confirmed'].includes(current.status)) throw bad('Booking not found or cannot be edited');
+      if (current.travel_date <= today()) throw bad('A trip that has already started cannot be edited');
+      const lockKeys = [
+        `${current.transport_id}:${current.travel_date}:${current.departure_time || ''}`,
+        `${b.transport_id}:${b.travel_date}:${b.departure_time}`,
+      ];
+      for (const key of [...new Set(lockKeys)].sort()) await db.lock(key);
+
+      const preserveExistingMeals = b.preserve_existing_meals === true
+        && Number(b.package_id) === current.package_id
+        && Number(b.nights) === current.nights
+        && Number(b.persons) === current.transport_persons;
+      const p = await price(preserveExistingMeals ? { ...b, food_orders: [] } : b, bookingId);
+      if (preserveExistingMeals) {
+        p.meal = current.meal_cost;
+        p.mealDays = current.meal_days;
+        p.total = p.transport + p.hotel + p.meal;
+        p.discount = p.total >= 5000 ? p.total * 0.3 : 0;
+        p.final_total = p.total - p.discount;
+        p.selectedMeals = null;
+      }
+      const transport = await db.prepare('select capacity from transports where id=?').get(b.transport_id);
+      if (!Array.isArray(seatNumbers) || seatNumbers.length !== p.persons
+        || seatNumbers.some(number => !Number.isInteger(number) || number < 1 || number > transport.capacity)
+        || new Set(seatNumbers).size !== seatNumbers.length) {
+        throw bad('Select a different seat for each traveller');
+      }
+      const occupied = new Set(await booked(transport, b.travel_date, b.departure_time, bookingId));
+      if (seatNumbers.some(number => occupied.has(number))) {
+        throw bad('One or more selected seats were just booked. Choose available seats and try again');
+      }
+
+      await db.prepare(`update bookings set start_district_id=?,destination_division_id=?,package_id=?,
+        transport_id=?,transport_persons=?,room_id=?,hotel_persons=?,nights=?,meal_persons=?,meal_days=?,
+        distance_km=?,transport_cost=?,hotel_cost=?,meal_cost=?,total=?,discount=?,final_total=?,
+        travel_date=?,departure_time=? where id=?`)
+        .run(b.start_district_id, b.destination_division_id, b.package_id, b.transport_id, p.persons,
+          b.room_id, p.persons, p.nights, p.persons, p.mealDays, p.distanceKm, p.transport, p.hotel,
+          p.meal, p.total, p.discount, p.final_total, b.travel_date, b.departure_time, bookingId);
+      if (p.selectedMeals) {
+        await db.prepare('delete from booking_food_orders where booking_id=?').run(bookingId);
+        await db.prepare('delete from booking_meal_selections where booking_id=?').run(bookingId);
+        await db.prepare('delete from booking_snack_selections where booking_id=?').run(bookingId);
+        await db.prepare('delete from booking_meals where booking_id=?').run(bookingId);
+        await db.prepare('delete from booking_meal_days where booking_id=?').run(bookingId);
+      }
+      await db.prepare('delete from booking_seats where booking_id=?').run(bookingId);
+      for (const item of p.selectedMeals || []) {
+        if (item.restaurant_id) {
+          await db.prepare(`insert into booking_food_orders(
+            booking_id,day,meal_type,person_number,restaurant_id,menu_item_id,quantity) values(?,?,?,?,?,?,?)`)
+            .run(bookingId, item.day, item.meal_type, item.person_number, item.restaurant_id,
+              item.menu_item_id, item.quantity);
+        } else if (item.type === 'snacks') {
+          await db.prepare('insert into booking_snack_selections(booking_id,day,snack_item_id,persons) values(?,?,?,?)')
+            .run(bookingId, item.day, item.id, item.persons);
+        } else {
+          await db.prepare('insert into booking_meal_selections(booking_id,day,meal_type,meal_item_id,persons) values(?,?,?,?,?)')
+            .run(bookingId, item.day, item.type, item.id, item.persons);
+        }
+      }
+      for (const number of seatNumbers) {
+        await db.prepare('insert into booking_seats(booking_id,seat_number) values(?,?)').run(bookingId, number);
+      }
+      await db.prepare('update payments set remaining=greatest(0, ? - advance) where booking_id=?')
+        .run(p.final_total, bookingId);
+    })();
+  } catch (error) {
+    if (error.status) throw error;
+    console.error('Could not update booking:', error);
+    throw Object.assign(new Error('Could not update this booking. Please check your details and try again.'), { status: 500 });
+  }
+  const updated = (await withMeals(await db.prepare(BOOKINGS + ' where b.id=? and b.user_id=?')
+    .all(bookingId, q.user.id)))[0];
+  res.json({ ok: true, booking: updated });
+});
+
 r.get('/preferences', auth, async (q, res) => res.json(await food.preferences(q.user.id)));
 r.put('/preferences', auth, async (q, res) => res.json(await food.savePreferences(q.user.id, q.body)));
 
@@ -196,7 +293,10 @@ function refundFor(b) {
   if (b.status !== 'confirmed') return 0;
   const days = Math.ceil((new Date(b.travel_date) - new Date(new Date().toDateString())) / 864e5);
   if (days < 0) throw bad('This trip has already started, so it cannot be cancelled');
-  return Math.round(b.advance * (days >= 7 ? 0.8 : days >= 2 ? 0.5 : 0) * 100) / 100;
+  const adjustmentDue = Math.max(0, b.advance - b.final_total);
+  const retainedAdvance = b.advance - adjustmentDue;
+  const policyRefund = retainedAdvance * (days >= 7 ? 0.8 : days >= 2 ? 0.5 : 0);
+  return Math.round((adjustmentDue + policyRefund) * 100) / 100;
 }
 
 r.get('/mine', auth, async (q, res) =>

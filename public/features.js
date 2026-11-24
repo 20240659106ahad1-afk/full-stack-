@@ -37,7 +37,9 @@ const pwField = (name, label, auto) => `<label>${label}${pwInput(name, `required
 const payload = f => {
   const d = Object.fromEntries(new FormData(f));
   d.seat_numbers = JSON.parse(d.seat_numbers || '[]');
-  d.food_orders = tripFoodEditor?.orders() || [];
+  if (f.dataset.id && f.dataset.preserveMeals === 'true') d.preserve_existing_meals = true;
+  else d.food_orders = tripFoodEditor?.orders() || [];
+  if (f.dataset.id) d.booking_id = Number(f.dataset.id);
   return d;
 };
 
@@ -187,11 +189,18 @@ ${menu.map(item => opt(item.id, `${item.name} · ${tk(item.price)}`, choice.menu
 let tripFoodEditor;
 
 async function plan() {
+  tripFoodEditor = null;
   cat = await api('/catalog');
-  $('#app').innerHTML = `<section class="destination-banner" id="destination-banner"><img id="destination-photo" alt="" fetchpriority="high" hidden><div class="destination-shade"></div><div class="destination-copy"><span class="eyebrow">YOUR NEXT BANGLADESH GETAWAY</span><h1 id="destination-title">Choose a destination</h1><p id="destination-details">Select a destination division to explore available tours.</p></div></section><div class="plan">
-<form id="trip" class="panel" data-act="book">
+  const editId = new URLSearchParams(location.hash.split('?')[1] || '').get('edit');
+  let editingBooking = null;
+  if (editId) {
+    editingBooking = (await api('/bookings/mine')).find(booking => String(booking.id) === editId);
+    if (!editingBooking || editingBooking.status === 'cancelled') throw new Error('Booking not found or cancelled');
+  }
+  $('#app').innerHTML = `<section class="destination-banner" id="destination-banner"><img id="destination-photo" alt="" fetchpriority="high" hidden><div class="destination-shade"></div><div class="destination-copy"><span class="eyebrow">${editingBooking ? 'UPDATE YOUR TRIP' : 'YOUR NEXT BANGLADESH GETAWAY'}</span><h1 id="destination-title">${editingBooking ? 'Edit your booking' : 'Choose a destination'}</h1><p id="destination-details">${editingBooking ? `Update booking ${esc(editingBooking.customer_code)}. The new price and any refund due will be shown before saving.` : 'Select a destination division to explore available tours.'}</p></div></section><div class="plan">
+<form id="trip" class="panel" data-act="book" data-id="${editingBooking ? editingBooking.id : ''}">
 <ul class="nav nav-tabs mb-3" role="tablist">
-<li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-trip">1. Trip and stay</button></li>
+<li class="nav-item"><button type="button" class="nav-link active" id="trip-tab" data-bs-toggle="tab" data-bs-target="#tab-trip">1. Trip and stay</button></li>
 <li class="nav-item"><button type="button" class="nav-link" id="meal-tab" data-bs-toggle="tab" data-bs-target="#tab-meals">2. Customize meals</button></li></ul>
 <div class="tab-content">
 <div class="tab-pane fade show active" id="tab-trip">
@@ -213,10 +222,15 @@ ${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.
 <div class="tab-pane fade" id="tab-meals">
 <h3 class="step"><b>4</b>Choose your food <small>open a spot's restaurants, browse a menu and choose separately for each traveller</small></h3>
 <div id="day-plan"></div>
-<div><button type="submit" class="mt-4">Payment</button></div></div>
+<div class="plan-step-actions"><button type="button" class="ghost mt-4" data-go="trip">Back: edit trip and stay</button>
+<button type="submit" class="mt-4">${editingBooking ? 'Save booking changes' : 'Payment'}</button></div></div>
  </div></form>
 <aside class="ticket" id="ticket">${miniLoader()}</aside></div>`;
   const f = $('#trip'); let avail = {}, bookedSeats = {}, selectedSeats = [], availabilityError = '';
+  if (editingBooking && !editingBooking.food_orders.length && editingBooking.meals.length) {
+    f.dataset.preserveMeals = 'true';
+  }
+  let initialFoodOrders = editingBooking?.food_orders || [];
   const foodPreferences = await api('/bookings/preferences');
   const updateDestination = () => {
     const destination = cat.divisions.find(d => d.id == f.destination_division_id.value);
@@ -261,7 +275,7 @@ ${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.
   };
   const fillTransports = () => {
     const requested = new URLSearchParams(location.hash.split('?')[1] || '').get('transport');
-    const cur = f.transport_id.value || requested;
+    const cur = f.transport_id.value || requested || editingBooking?.transport_id;
     f.transport_id.innerHTML = cat.transports.map(t => { const left = avail[t.id] ?? t.capacity;
       return `<option value="${t.id}"${t.id == cur ? ' selected' : ''}>${esc(`${t.name} ${t.type}, ${left}/${t.capacity} seats left`)}</option>`; }).join('');
     seatUI();
@@ -274,6 +288,7 @@ ${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.
     }
     try {
       const params = new URLSearchParams({ date: f.travel_date.value, departure_time: f.departure_time.value });
+      if (f.dataset.id) params.set('booking_id', f.dataset.id);
       const options = await api('/bookings/availability?' + params);
       availabilityError = '';
       avail = Object.fromEntries(options.map(x => [x.id, x.left]));
@@ -301,6 +316,7 @@ ${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.
     selectedSeats = selectedSeats.includes(number)
       ? selectedSeats.filter(seat => seat !== number)
       : [...selectedSeats, number].sort((a, b) => a - b);
+    if (editingBooking && selectedSeats.length !== editingBooking.transport_persons) f.dataset.preserveMeals = 'false';
     syncSeatSelection();
     seatUI();
     clearTimeout(quoteTimer); quoteTimer = setTimeout(quote, 200);
@@ -315,11 +331,14 @@ ${departureGroups.map(([period, times]) => `<optgroup label="${period}">${times.
     const { stops } = await api('/catalog/restaurants?package_id=' + encodeURIComponent(packageId));
     tripFoodEditor = mountFoodEditor($('#day-plan'), stops, {
       days: +f.nights.value || 1, persons: +f.persons.value || 1, preferences: foodPreferences,
+      initialOrders: initialFoodOrders,
       onChange: () => {
+        if (editingBooking) f.dataset.preserveMeals = 'false';
         clearTimeout(quoteTimer);
         quoteTimer = setTimeout(quote, 200);
       },
     });
+    initialFoodOrders = [];
     if (+f.nights.value > 7) $('#day-plan').insertAdjacentHTML('beforeend',
       '<p class="text-secondary small">Restaurant orders can be customized for the first 7 days.</p>');
   };
@@ -355,9 +374,10 @@ ${q.discount ? `<div class="ln"><span>30% discount</span><span>-${tk(q.discount)
   f.addEventListener('input', async e => {
     const n = e.target.name;
     const foodControl = e.target.matches('[data-food-item], [data-food-quantity]');
-    if (f.dataset.id || (!['start_district_id', 'destination_division_id', 'package_id', 'nights', 'travel_date', 'transport_id', 'persons', 'room_id'].includes(n)
-      && n !== 'departure_time' && !foodControl)) return;
+    if (!(['start_district_id', 'destination_division_id', 'package_id', 'nights', 'travel_date',
+      'transport_id', 'departure_time', 'persons', 'room_id'].includes(n) || foodControl)) return;
     if (n === 'nights') {
+      if (editingBooking) f.dataset.preserveMeals = 'false';
       if (tripFoodEditor) tripFoodEditor.update(+f.persons.value, +f.nights.value);
       else await dayPlan();
     }
@@ -369,13 +389,36 @@ ${q.discount ? `<div class="ln"><span>30% discount</span><span>-${tk(q.discount)
     clearTimeout(quoteTimer); quoteTimer = setTimeout(quote, 250);
   });
   f.addEventListener('change', e => {
-    if (e.target.name === 'destination_division_id') { fillPackages(); updateDestination(); }
+    if (e.target.name === 'destination_division_id') {
+      fillPackages();
+      updateDestination();
+      dayPlan().catch(error => toast(error.message, 1));
+    }
     if (e.target.name === 'package_id') {
+      if (editingBooking) f.dataset.preserveMeals = 'false';
       updateDestination();
       dayPlan().catch(error => toast(error.message, 1));
     }
   });
-  fillPackages(); updateDestination(); await dayPlan(); fillTransports(); syncSeatSelection(); quote();
+  if (editingBooking) {
+    f.start_district_id.value = editingBooking.start_district_id;
+    f.destination_division_id.value = editingBooking.destination_division_id;
+    fillPackages();
+    f.package_id.value = editingBooking.package_id;
+    f.travel_date.value = editingBooking.travel_date;
+    f.departure_time.value = editingBooking.departure_time;
+    f.room_id.value = editingBooking.room_id;
+    f.nights.value = editingBooking.nights;
+    selectedSeats = [...(editingBooking.seat_numbers || [])];
+  } else {
+    fillPackages();
+  }
+  updateDestination();
+  syncSeatSelection();
+  await dayPlan();
+  fillTransports();
+  if (editingBooking) await loadSeats();
+  quote();
 }
 
 async function paymentPage(bookingId) {
@@ -436,6 +479,7 @@ ${b.meals.length ? `<div class="booking-row"><span>Meals</span><strong>${b.meals
 <div class="booking-row"><span>Total price</span><strong>${tk(b.final_total)}</strong></div>
 ${b.discount ? `<div class="booking-row discount"><span>Discount</span><strong>-${tk(b.discount)}</strong></div>` : ''}
 ${b.advance ? `<div class="booking-row paid"><span>Advance paid</span><strong>${tk(b.advance)}</strong></div><div class="booking-row due"><span>Remaining due</span><strong>${tk(b.remaining)}</strong></div>` : `<div class="booking-row"><span>Advance required (50%)</span><strong>${tk(b.final_total / 2)}</strong></div>`}
+${b.refund_due ? `<div class="booking-row due"><span>Manual refund to arrange</span><strong>${tk(b.refund_due)}</strong></div>` : ''}
 ${b.method ? `<div class="booking-row"><span>Payment method</span><strong>${esc(b.method)}</strong></div><div class="booking-row"><span>Demo transaction ID</span><strong class="transaction-id">${esc(b.transaction_id)}</strong></div>` : ''}
 </section></div>
 ${b.meals.length ? `<p class="booking-meals"><strong>Meal selections</strong><span>${b.meals.map(esc).join(' · ')}</span></p>` : ''}
@@ -472,7 +516,7 @@ async function admin() {
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Trip</h3>${kv('From', esc(b.start_district))}${kv('To', esc(b.division))}${kv('Package', esc(b.package))}${b.distance_km ? kv('Route distance (one way)', `${b.distance_km} km`) : ''}${kv('Travel date', esc(b.travel_date))}${b.departure_time ? kv('Transport departure time', esc(b.departure_time)) : ''}${kv('Seats booked', b.seat_numbers?.length ? b.seat_numbers.join(', ') : b.transport_persons)}</div>
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Transport and stay</h3>${kv('Transport', esc(`${b.transport_name} ${b.transport_type}`))}${b.departure_time ? kv('Departure time', esc(b.departure_time)) : ''}${kv('Room', esc(`${b.room_type}, ${b.bed_count} bed${b.bed_count === 1 ? '' : 's'}`))}${kv('Nights', b.nights)}${kv('Meals', b.meals.length ? b.meals.map(esc).join('<br>') : 'None')}</div>
 <div class="col-md-6 col-xl-3"><h3 class="mt-0">Money</h3>${kv('Transport', tk(b.transport_cost))}${kv('Hotel', tk(b.hotel_cost))}${kv('Meals', tk(b.meal_cost))}${b.discount ? kv('Discount', '-' + tk(b.discount)) : ''}${kv('Total', `<strong>${tk(b.final_total)}</strong>`)}
-${kv('Demo payment', b.method ? esc(`${b.method}, ID ${b.transaction_id}`) : 'Not paid')}${kv('Demo advance', b.advance ? tk(b.advance) : '-')}${kv('Due later', b.remaining ? tk(b.remaining) : '-')}${b.status === 'cancelled' ? kv('Refund to give back', tk(b.refund_amount)) : ''}</div>
+${kv('Demo payment', b.method ? esc(`${b.method}, ID ${b.transaction_id}`) : 'Not paid')}${kv('Demo advance', b.advance ? tk(b.advance) : '-')}${kv('Due later', b.remaining ? tk(b.remaining) : '-')}${b.status === 'confirmed' && b.refund_due ? kv('Manual refund to arrange', tk(b.refund_due)) : ''}${b.status === 'cancelled' ? kv('Refund to give back', tk(b.refund_amount)) : ''}</div>
 </div></div></div></div>`).join('') || '<p class="mut">No bookings yet.</p>'}</div>`
     + (fbs.length ? `<h2 class="mt-4">Feedback <small class="text-secondary fs-6">${(fbs.reduce((s, f) => s + f.rating, 0) / fbs.length).toFixed(1)} / 5 from ${fbs.length} reviews</small></h2><ul class="list-group mb-3">${fbs.map(f => `<li class="list-group-item"><div class="d-flex justify-content-between gap-2"><strong>${esc(f.username)}${f.customer_code ? ` <span class="text-secondary fw-normal">on ${esc(f.customer_code)}</span>` : ''}</strong><span class="text-warning">${stars(f.rating)}</span></div><div>${esc(f.comment)}</div><small class="text-secondary">${esc(f.created_at)}</small></li>`).join('')}</ul>` : '') + (users.length ? `<h2 class="mt-4">Users</h2><div class="scroll"><table><tr><th>User</th><th>Email</th><th>Mobile</th><th>Role</th></tr>
 ${users.map(u => `<tr><td>${esc(u.username)}</td><td>${esc(u.email)}</td><td>${esc(u.mobile)}</td><td><select data-role="${u.id}">${['customer', 'moderator', 'admin'].map(r => opt(r, r, r === u.role)).join('')}</select></td></tr>`).join('')}</table></div>` : '');
@@ -491,8 +535,10 @@ async function profile() {
     api('/auth/profile'), api('/bookings/mine'), api('/bookings/preferences'), api('/catalog'),
   ]);
   cat = catalogData;
-  const foodBookingId = new URLSearchParams(location.hash.split('?')[1] || '').get('food');
+  const profileParams = new URLSearchParams(location.hash.split('?')[1] || '');
+  const foodBookingId = profileParams.get('food');
   const foodBooking = list.find(booking => String(booking.id) === foodBookingId && booking.status !== 'cancelled');
+  const editableBookings = list.filter(booking => booking.status !== 'cancelled' && booking.travel_date >= today());
   $('#app').innerHTML = `<div class="profile-heading"><div><span class="section-kicker">YOUR ACCOUNT</span><h1>Your profile</h1><p class="mut">View and update your personal details.</p></div><span class="profile-user">${esc(u.username)}</span></div><div class="grid">
 <form class="panel" data-act="profile"><h2>Details</h2><p class="mut">Username: ${esc(u.username)}</p>
 <label>Email (payment codes are sent here)<input name="email" type="email" value="${esc(u.email)}" required></label>
@@ -511,6 +557,14 @@ ${pwField('new_password', 'New password', 'new-password')}<button>Change passwor
     return `<label>${type[0].toUpperCase() + type.slice(1)} preference<select name="${type}">
 <option value="">No default</option>${names.map(name => opt(name, name, preferences[type] === name)).join('')}</select></label>`;
   }).join('')}<button>Save food preferences</button></form></section>
+<section class="profile-food panel"><span class="section-kicker">YOUR BOOKINGS</span><h2>Edit a trip</h2>
+<p class="mut">Update trip details before travel. The total and any manual refund due are recalculated when you save.</p>
+${editableBookings.length
+    ? `<div class="profile-food-bookings">${editableBookings.map(booking =>
+      `<a class="profile-food-booking" href="#/plan?edit=${encodeURIComponent(booking.id)}"><strong>${esc(booking.package || booking.division)}</strong>
+<span>${esc(booking.travel_date)} · ${booking.status} · ${esc(booking.customer_code)}${booking.refund_due ? ` · Refund due: ${tk(booking.refund_due)}` : ''}</span><b>Edit trip →</b></a>`).join('')}</div>`
+    : '<p class="mut">No upcoming bookings to edit.</p>'}
+</section>
 <section class="profile-food panel"><span class="section-kicker">BOOKING MEALS</span><h2>Update food for a trip</h2>
 <p class="mut">Open any active booking to update restaurant orders, including while your trip is in progress. Your booking total and remaining due will be recalculated.</p>
 ${list.filter(booking => booking.status !== 'cancelled').length
@@ -519,7 +573,7 @@ ${list.filter(booking => booking.status !== 'cancelled').length
 <span>${esc(booking.travel_date)} · ${booking.status} · ${esc(booking.customer_code)}</span><b>Update food →</b></a>`).join('')}</div>`
     : '<p class="mut">No active bookings yet.</p>'}
 ${foodBooking ? `<div class="profile-food-editor"><h3>${esc(foodBooking.package || foodBooking.division)} · ${esc(foodBooking.customer_code)}</h3>
-<p class="mut">Current total: ${tk(foodBooking.final_total)}${foodBooking.remaining ? ` · Remaining due: ${tk(foodBooking.remaining)}` : ''}</p>
+<p class="mut">Current total: ${tk(foodBooking.final_total)}${foodBooking.remaining ? ` · Remaining due: ${tk(foodBooking.remaining)}` : ''}${foodBooking.refund_due ? ` · Manual refund due: ${tk(foodBooking.refund_due)}` : ''}</p>
 <div id="profile-food-order"></div></div>` : ''}
 </section>`;
   if (foodBooking) {
@@ -605,7 +659,12 @@ document.addEventListener('click', async e => {
     $('#f-login').hidden = t.dataset.tab !== 'login'; $('#f-register').hidden = t.dataset.tab !== 'register';
     return;
   }
-  if (e.target.closest('[data-go="meals"]')) { bootstrap.Tab.getOrCreateInstance($('#meal-tab')).show(); return; }
+  const go = e.target.closest('[data-go]');
+  if (go) {
+    const tab = go.dataset.go === 'meals' ? $('#meal-tab') : $('#trip-tab');
+    bootstrap.Tab.getOrCreateInstance(tab).show();
+    return;
+  }
   const b = e.target.closest('[data-act]');
   try {
     if (b?.dataset.act === 'otp') {

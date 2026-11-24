@@ -1,6 +1,9 @@
 const db = require('./db');
 exports.BOOKINGS = `select b.*, u.username, u.mobile, u.email, p.name package, d.name division, sd.name start_district,
-  t.name transport_name, t.type transport_type, hr.room_type, hr.bed_count, py.method, py.transaction_id, py.advance, py.remaining
+  t.name transport_name, t.type transport_type, hr.room_type, hr.bed_count, py.method, py.transaction_id,
+  py.advance, py.remaining,
+  case when b.status='confirmed' and py.advance > b.final_total
+    then py.advance - b.final_total else 0 end refund_due
   from bookings b join users u on u.id = b.user_id
   left join packages p on p.id = b.package_id
   left join divisions d on d.id = b.destination_division_id

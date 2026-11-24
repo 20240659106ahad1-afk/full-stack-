@@ -12,7 +12,8 @@ A full-stack travel planning and booking application for exploring tour packages
 - Compare transport fares, with higher AC and flight fares
 - Browse restaurants and menus at tour spots, select different meals for each traveller, and edit booked food orders and default preferences from Profile
 - Create an account, sign in, and manage a profile
-- Save bookings, confirm them using an email OTP, and cancel bookings
+- Save bookings, confirm them using an email OTP, edit upcoming pending or confirmed trips from Profile, and cancel bookings
+- Recalculate prices after trip edits; show any overpayment as a manual refund due
 - Submit feedback
 - Admin tools for bookings, users, and catalog data
 

@@ -208,7 +208,11 @@ async function route() {
   const p = anchor ? '' : routeParts[0];
   $('#app').classList.toggle('wide', p === '');
   document.querySelectorAll('#nav a').forEach(a => a.toggleAttribute('aria-current', a.getAttribute('href') === location.hash));
-  if (!me && ['plan', 'bookings', 'booking-success', 'payment', 'admin', 'catalog', 'feedback'].includes(p)) { location.hash = '#/'; return; }
+  if (!me && ['plan', 'bookings', 'booking-success', 'payment', 'admin', 'catalog', 'feedback'].includes(p)) {
+    toast('Please log in first.');
+    location.hash = '#/profile';
+    return;
+  }
   if ((p === 'admin' && me.role === 'customer') || (p === 'catalog' && me.role !== 'admin')) { location.hash = '#/'; return; }
   const t0 = Date.now(); showLoader();
   try {
@@ -229,6 +233,12 @@ document.addEventListener('submit', async e => {
       if (location.hash === '#/profile') route();
       else location.hash = '#/profile';
     } else if (a === 'book') {
+      if (f.dataset.id) {
+        const result = await api('/bookings/' + f.dataset.id, 'PUT', payload(f));
+        toast(`Booking updated. New total: ${tk(result.booking.final_total)}${result.booking.refund_due ? ` · Refund due: ${tk(result.booking.refund_due)}` : ''}`);
+        location.hash = '#/profile';
+        return;
+      }
       const b = await api('/bookings', 'POST', payload(f));
       if (f.id === 'trip') {
         location.hash = '#/payment/' + encodeURIComponent(b.id);
